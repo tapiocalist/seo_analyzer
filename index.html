@@ -997,7 +997,7 @@
         }
 
         function parseKeywordAndSerpData(data) {
-            console.log('Raw input data:', data);
+            console.log('Starting to parse supplement data');
             const lines = data.split('\n').filter(line => line.trim());
             const result = {
                 keywordInfo: null,
@@ -1010,40 +1010,45 @@
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
-                console.log(`Line ${i}: "${line}"`);
 
                 // 检查是否是关键词信息开始
                 if (line.includes('关键词信息') || line.toLowerCase().includes('keyword')) {
                     currentSection = 'keyword';
-                    console.log('Switched to keyword section');
                     continue;
                 }
 
                 // 检查是否是SERP链接开始
-                if (line.includes('SERP links') || (line.includes('URL') && line.includes('网站标题')) ||
-                    (currentSection !== 'keyword' && !line.includes('\t') && !keywordHeaderFound &&
-                     (lines[i+1] && !lines[i+1].trim()) &&
-                     (lines[i+2] && (lines[i+2].includes('›') || lines[i+2].includes('http'))))) {
+                if (line.includes('SERP links') || (line.includes('URL') && line.includes('网站标题'))) {
                     currentSection = 'serp';
                     serpLinksStarted = true;
-                    console.log('Switched to SERP section');
-
-                    // 如果这行就是第一个Google格式条目的标题，不要跳过
-                    if (!line.includes('SERP links') && !line.includes('URL')) {
-                        i--; // 回退一行，因为当前行可能是第一个条目的标题
-                    }
                     continue;
+                }
+
+                // 如果没有找到关键词数据，并且当前行不是tab分隔的数据，检查是否是Google格式SERP开始
+                if (currentSection === '' && !keywordHeaderFound && !line.includes('\t')) {
+                    // 检查接下来几行是否符合Google格式
+                    let hasGoogleFormat = false;
+                    for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+                        const checkLine = lines[j] ? lines[j].trim() : '';
+                        if (checkLine.includes('›') || checkLine.startsWith('http')) {
+                            hasGoogleFormat = true;
+                            break;
+                        }
+                    }
+
+                    if (hasGoogleFormat) {
+                        currentSection = 'serp';
+                        serpLinksStarted = true;
+                        // 不要回退，直接处理当前行
+                    }
                 }
 
                 // 解析关键词数据
                 if (currentSection === 'keyword' && line.includes('\t') && !keywordHeaderFound) {
                     const parts = line.split('\t');
-                    console.log('Keyword line parts:', parts);
-                    console.log('Parts count:', parts.length);
 
                     // 跳过表头行
                     if (line.toLowerCase().includes('keyword') && line.toLowerCase().includes('difficulty')) {
-                        console.log('Skipping header line');
                         continue;
                     }
 
@@ -1089,11 +1094,6 @@
                         const googleResults = parseGoogleFormat(lines, i);
                         if (googleResults.length > 0) {
                             result.serpLinks.push(...googleResults);
-                            console.log('Parsed Google format results:', googleResults);
-                            // 详细打印每个结果以调试
-                            googleResults.forEach((item, index) => {
-                                console.log(`SERP ${index + 1}:`, item);
-                            });
                         }
                         break; // 已解析完所有Google格式数据
                     } else if (line.includes('http')) {
@@ -1106,15 +1106,13 @@
                 }
             }
 
-            console.log('Final parsing result:', result);
+            console.log('Parsing completed. Found', result.serpLinks.length, 'SERP links');
             return result;
         }
 
         function parseGoogleFormat(lines, startIndex) {
             // Google搜索结果格式解析
             // 格式：第1行-标题，第2行-网站名，第3行-URL，第4行-描述
-            console.log('parseGoogleFormat called with startIndex:', startIndex);
-            console.log('Available lines from startIndex:', lines.slice(startIndex, startIndex + 25));
 
             const results = [];
             let i = startIndex;
@@ -1164,7 +1162,6 @@
                 }
             }
 
-            console.log('parseGoogleFormat final results:', results);
             return results;
         }
 
