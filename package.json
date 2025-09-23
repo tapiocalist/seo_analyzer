@@ -1,16 +1,71 @@
 {
 	"name": "seo-analyzer",
-	"version": "1.0.0",
-	"description": "SEO页面分析工具 - 分析HTML文件SEO要素",
+	"version": "2.0.0",
+	"description": "强大的SEO分析工具 - 支持批量URL下载和多文件SEO分析，具备完整的数据导出功能",
 	"main": "index.html",
+	"homepage": "https://seo-analyzer-chi.vercel.app",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/user/seo-analyzer.git"
+	},
 	"scripts": {
 		"dev": "http-server . -p 8080",
-		"build": "echo 'No build step required'",
-		"start": "http-server . -p 8080"
+		"build": "echo 'No build step required - Static HTML application'",
+		"start": "http-server . -p 8080",
+		"serve": "http-server . -p 8080 -o",
+		"deploy": "vercel --prod"
 	},
-	"keywords": ["seo", "analyzer", "html", "analysis"],
+	"keywords": [
+		"seo",
+		"analyzer",
+		"html",
+		"analysis",
+		"keyword-density",
+		"serp-analysis",
+		"batch-processing",
+		"multi-file",
+		"excel-export",
+		"content-analysis",
+		"web-scraping",
+		"digital-marketing",
+		"seo-tools"
+	],
+	"author": "SEO Analyzer Team",
 	"license": "MIT",
+	"engines": {
+		"node": ">=16.0.0"
+	},
+	"browserslist": [
+		"last 2 Chrome versions",
+		"last 2 Firefox versions",
+		"last 2 Safari versions",
+		"last 2 Edge versions"
+	],
 	"devDependencies": {
 		"http-server": "^14.1.1"
+	},
+	"files": [
+		"index.html",
+		"README.md",
+		"CLAUDE.md",
+		"API_DOCUMENTATION.md",
+		"vercel.json"
+	],
+	"features": {
+		"batchDownload": "批量URL下载功能",
+		"multiFileAnalysis": "多文件SEO分析",
+		"excelExport": "Excel数据导出",
+		"serpAnalysis": "SERP竞争分析",
+		"keywordDensity": "关键词密度分析",
+		"dataPersistence": "数据持久化存储",
+		"historyTracking": "分析历史记录"
+	},
+	"techStack": {
+		"frontend": "Vanilla JavaScript (ES6+)",
+		"styling": "CSS3",
+		"storage": "localStorage API",
+		"fileHandling": "FileReader API",
+		"clipboard": "Clipboard API",
+		"deployment": "Vercel Static"
 	}
 }

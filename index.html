@@ -42,6 +42,22 @@
             color: #646464;
         }
 
+        .guide-link {
+            display: inline-block;
+            background: #644a40;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: background 0.3s, transform 0.2s;
+        }
+
+        .guide-link:hover {
+            background: #7a5a4f;
+            transform: translateY(-1px);
+        }
+
         .card {
             background: #fcfcfc;
             border: 1px solid #d8d8d8;
@@ -400,6 +416,11 @@
         <div class="header">
             <h1>SEO页面分析工具</h1>
             <p>分析HTML文件SEO要素：Title、Description、H标签、关键词密度</p>
+            <div style="margin-top: 16px;">
+                <a href="guide.html" target="_blank" class="guide-link">
+                    📖 操作指南
+                </a>
+            </div>
         </div>
 
         <!-- 最近分析记录 -->
@@ -1046,12 +1067,10 @@
                 // 解析关键词数据
                 if (currentSection === 'keyword' && line.includes('\t') && !keywordHeaderFound) {
                     const parts = line.split('\t');
-
                     // 跳过表头行
                     if (line.toLowerCase().includes('keyword') && line.toLowerCase().includes('difficulty')) {
                         continue;
                     }
-
                     // 解析数据行
                     if (parts.length >= 13) {
                         // 按照实际格式解析：
