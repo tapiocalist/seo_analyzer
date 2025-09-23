@@ -413,7 +413,10 @@
                     <h3 style="margin-bottom: 12px; color: #644a40;">分析HTML文件</h3>
                     <input type="file" id="fileInput" accept=".html,.htm" style="width: 100%; padding: 12px; border: 1px solid #d8d8d8; border-radius: 6px; font-size: 14px; background: #fcfcfc; color: #202020; margin-bottom: 8px;">
                     <textarea id="supplementDataInput" class="batch-textarea" placeholder="可粘贴关键词信息和SERP链接数据，在分析HTML文件时一同处理..." style="height: 60px; margin-bottom: 8px;"></textarea>
-                    <button class="btn" onclick="analyzeFile()">分析网站</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn" onclick="analyzeFile()">分析网站</button>
+                        <button class="btn" onclick="testParseData()" style="background: #666; font-size: 12px; padding: 8px 12px;">测试解析</button>
+                    </div>
                 </div>
             </div>
 
@@ -446,12 +449,15 @@
                     <div>
                         <h2 class="section-title">标题结构 (H1-H2)</h2>
                         <div id="headingsInfo"></div>
+
+                        <!-- 关键词指标区域 -->
+                        <div id="keywordMetrics" style="margin-top: 20px;"></div>
                     </div>
                 </div>
             </div>
 
             <div id="supplementCard" class="card" style="display: none;">
-                <h2 class="section-title">补充信息</h2>
+                <h2 class="section-title">SERP竞争分析</h2>
                 <div id="supplementInfo"></div>
             </div>
 
@@ -636,9 +642,9 @@
         }
 
         function displayResults(analysis, supplementInfo = null) {
-            // 基础信息
+            // 基础信息和关键词信息
             const basicInfoDiv = document.getElementById('basicInfo');
-            basicInfoDiv.innerHTML = `
+            let basicInfoHTML = `
                 <div class="meta-item">
                     <div class="meta-label">页面标题${getStatusBadge(analysis.title, 'title')}</div>
                     <div class="meta-value">${analysis.title || '未找到'}</div>
@@ -652,6 +658,23 @@
                     <div class="meta-value">${analysis.wordCount}</div>
                 </div>
             `;
+
+            // 如果有关键词信息，添加到页面信息中
+            if (supplementInfo && supplementInfo.keywordInfo) {
+                const kw = supplementInfo.keywordInfo;
+                basicInfoHTML += `
+                    <div class="meta-item">
+                        <div class="meta-label">关键词（Keyword）</div>
+                        <div class="meta-value">${kw.keyword}</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">关键词页面关联（URL）</div>
+                        <div class="meta-value"><a href="${kw.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all; font-size: 12px;">${kw.url}</a></div>
+                    </div>
+                `;
+            }
+
+            basicInfoDiv.innerHTML = basicInfoHTML;
 
 
             // 标题结构 (文章大纲风格)
@@ -705,10 +728,18 @@
                 keywordsDiv.innerHTML = '<div class="no-data">未找到关键词数据</div>';
             }
 
+            // 显示关键词指标
+            const keywordMetricsDiv = document.getElementById('keywordMetrics');
+            if (supplementInfo && supplementInfo.keywordInfo) {
+                displayKeywordMetrics(supplementInfo.keywordInfo, keywordMetricsDiv);
+            } else {
+                keywordMetricsDiv.innerHTML = '';
+            }
+
             // 显示补充信息
             const supplementCard = document.getElementById('supplementCard');
             const supplementDiv = document.getElementById('supplementInfo');
-            if (supplementInfo) {
+            if (supplementInfo && supplementInfo.serpLinks && supplementInfo.serpLinks.length > 0) {
                 displaySupplementInfo(supplementInfo, supplementDiv);
                 supplementCard.style.display = 'block';
             } else {
@@ -885,6 +916,7 @@
         }
 
         function parseKeywordAndSerpData(data) {
+            console.log('Raw input data:', data);
             const lines = data.split('\n').filter(line => line.trim());
             const result = {
                 keywordInfo: null,
@@ -897,36 +929,57 @@
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
+                console.log(`Line ${i}: "${line}"`);
 
-                if (line.includes('关键词信息') || line.includes('Keyword')) {
+                // 检查是否是关键词信息开始
+                if (line.includes('关键词信息') || line.toLowerCase().includes('keyword')) {
                     currentSection = 'keyword';
+                    console.log('Switched to keyword section');
                     continue;
                 }
 
-                if (line.includes('SERP links') || line.includes('URL') && line.includes('网站标题')) {
+                // 检查是否是SERP链接开始
+                if (line.includes('SERP links') || (line.includes('URL') && line.includes('网站标题'))) {
                     currentSection = 'serp';
                     serpLinksStarted = true;
+                    console.log('Switched to SERP section');
                     continue;
                 }
 
+                // 解析关键词数据
                 if (currentSection === 'keyword' && line.includes('\t') && !keywordHeaderFound) {
-                    // 解析关键词数据行
                     const parts = line.split('\t');
-                    if (parts.length >= 10) {
+                    console.log('Keyword line parts:', parts);
+                    console.log('Parts count:', parts.length);
+
+                    // 跳过表头行
+                    if (line.toLowerCase().includes('keyword') && line.toLowerCase().includes('difficulty')) {
+                        console.log('Skipping header line');
+                        continue;
+                    }
+
+                    // 解析数据行
+                    if (parts.length >= 13) {
+                        // 按照实际格式解析：
+                        // 0:Keyword, 1:Position, 2:Previous position, 3:Search Volume, 4:Keyword Difficulty, 5:CPC, 6:URL, 7:Traffic, 8:Traffic (%), 9:Traffic Cost, 10:Competition, 11:Number of Results, 12:intitle
                         result.keywordInfo = {
                             keyword: parts[0] || '',
                             position: parts[1] || '',
                             difficulty: parts[4] || '',
-                            results: parts[10] || '',
+                            results: parts[11] || '', // Number of Results
+                            intitle: parts[12] || '', // intitle 结果数
                             url: parts[6] || '',
                             traffic: parts[7] || ''
                         };
                         keywordHeaderFound = true;
+                        console.log('Successfully parsed keyword info:', result.keywordInfo);
+                    } else {
+                        console.log('Not enough parts for keyword parsing:', parts.length);
                     }
                 }
 
+                // 解析SERP链接
                 if (currentSection === 'serp' && serpLinksStarted && line.includes('http')) {
-                    // 解析SERP链接
                     const parsed = parseSerpLine(line);
                     if (parsed) {
                         result.serpLinks.push(parsed);
@@ -934,6 +987,7 @@
                 }
             }
 
+            console.log('Final parsing result:', result);
             return result;
         }
 
@@ -979,41 +1033,59 @@
             }
         }
 
+        function displayKeywordMetrics(keywordInfo, targetDiv) {
+            const kw = keywordInfo;
+            const results = parseFloat(kw.results) || 0;
+            const intitle = parseFloat(kw.intitle) || 0;
+            const difficulty = parseFloat(kw.difficulty) || 0;
+            const traffic = parseFloat(kw.traffic) || 0;
+
+            // 计算 KGR (Keyword Golden Ratio) = intitle / Number of Results
+            let kgr = 0;
+            let kgrStatus = '';
+            if (results > 0) {
+                kgr = (intitle / results).toFixed(4);
+                if (kgr <= 0.25) kgrStatus = '🟢 优秀';
+                else if (kgr <= 0.5) kgrStatus = '🟡 良好';
+                else if (kgr <= 1) kgrStatus = '🟠 一般';
+                else kgrStatus = '🔴 较差';
+            } else {
+                kgr = 'N/A';
+                kgrStatus = '无法计算';
+            }
+
+            targetDiv.innerHTML = `
+                <h3 style="color: #644a40; margin-bottom: 8px; font-size: 1em;">关键词指标</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px;">
+                    <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 12px; color: #666;">结果数</div>
+                        <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kw.results ? parseInt(kw.results).toLocaleString() : '0'}</div>
+                    </div>
+                    <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 12px; color: #666;">Intitle</div>
+                        <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kw.intitle ? parseInt(kw.intitle).toLocaleString() : '0'}</div>
+                    </div>
+                    <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 12px; color: #666;">KD难度</div>
+                        <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kw.difficulty}</div>
+                    </div>
+                    <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 12px; color: #666;">流量</div>
+                        <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kw.traffic}</div>
+                    </div>
+                    <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
+                        <div style="font-size: 12px; color: #666;">KGR</div>
+                        <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kgr}</div>
+                        <div style="font-size: 10px; margin-top: 2px;">${kgrStatus}</div>
+                    </div>
+                </div>
+            `;
+        }
+
         function displaySupplementInfo(data) {
             const supplementDiv = document.getElementById('supplementInfo');
             let html = '';
 
-            // 关键词信息
-            if (data.keywordInfo) {
-                const kw = data.keywordInfo;
-                html += `
-                    <div style="margin-bottom: 24px;">
-                        <h3 style="color: #644a40; margin-bottom: 12px; font-size: 1.1em;">关键词信息</h3>
-                        <div class="meta-grid">
-                            <div class="meta-item">
-                                <div class="meta-label">关键词（Keyword）</div>
-                                <div class="meta-value">${kw.keyword}</div>
-                            </div>
-                            <div class="meta-item">
-                                <div class="meta-label">KD 难度（Keyword Difficulty）</div>
-                                <div class="meta-value">${kw.difficulty}</div>
-                            </div>
-                            <div class="meta-item">
-                                <div class="meta-label">Intitle结果数（Number of Results）</div>
-                                <div class="meta-value">${kw.results}</div>
-                            </div>
-                            <div class="meta-item">
-                                <div class="meta-label">关键词页面关联（URL）</div>
-                                <div class="meta-value"><a href="${kw.url}" target="_blank" style="color: #644a40; text-decoration: underline;">${kw.url}</a></div>
-                            </div>
-                            <div class="meta-item">
-                                <div class="meta-label">实际获得流量（Traffic）</div>
-                                <div class="meta-value">${kw.traffic}</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
 
             // SERP链接表格
             if (data.serpLinks.length > 0) {
@@ -1051,6 +1123,24 @@
             }
 
             supplementDiv.innerHTML = html;
+        }
+
+        function testParseData() {
+            const data = document.getElementById('supplementDataInput').value.trim();
+            if (!data) {
+                alert('请先输入补充数据');
+                return;
+            }
+
+            console.log('=== 开始测试解析 ===');
+            try {
+                const result = parseKeywordAndSerpData(data);
+                console.log('=== 解析结果 ===', result);
+                alert(`解析结果：\n关键词: ${result.keywordInfo?.keyword || '未找到'}\n结果数: ${result.keywordInfo?.results || '未找到'}\nSERP链接: ${result.serpLinks?.length || 0}个\n\n请查看控制台获取详细信息`);
+            } catch (error) {
+                console.error('解析失败:', error);
+                alert('解析失败，请查看控制台获取详细信息');
+            }
         }
 
     </script>
