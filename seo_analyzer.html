@@ -451,6 +451,11 @@
         <div class="error" id="errorMessage"></div>
 
         <div class="results" id="results">
+            <!-- 复制到Excel按钮 -->
+            <div style="text-align: right; margin-bottom: 16px;">
+                <button class="btn" onclick="copyToExcel()" style="background: #28a745; font-size: 12px; padding: 6px 12px;">📋 复制到Excel</button>
+            </div>
+
             <!-- 页面信息和标题结构并列 -->
             <div class="card">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
@@ -1678,6 +1683,166 @@
                     notification.remove();
                 }
             }, 3000);
+        }
+
+        // 复制所有数据到Excel
+        function copyToExcel() {
+            try {
+                // 获取当前分析数据
+                const savedData = loadFromStorage();
+                if (!savedData || !savedData.analysisResults) {
+                    alert('没有可复制的分析数据');
+                    return;
+                }
+
+                const analysis = savedData.analysisResults.analysis;
+                const supplementInfo = savedData.analysisResults.supplementInfo;
+
+                let excelData = [];
+
+                // 基本信息
+                excelData.push(['分析项目', '内容', '状态/数值']);
+
+                // 只添加有内容的基本信息
+                if (analysis.basicInfo?.title) {
+                    excelData.push(['网站标题', analysis.basicInfo.title, getStatusText(analysis.basicInfo.titleStatus)]);
+                }
+                if (analysis.basicInfo?.description) {
+                    excelData.push(['网站描述', analysis.basicInfo.description, getStatusText(analysis.basicInfo.descStatus)]);
+                }
+                if (analysis.basicInfo?.url) {
+                    excelData.push(['网站URL', analysis.basicInfo.url, '']);
+                }
+
+                // 字符数和单词数合并到一行
+                const charCount = analysis.basicInfo?.charCount || '0';
+                const wordCount = analysis.basicInfo?.wordCount || '0';
+                excelData.push(['字符数 | 单词数', `${charCount} | ${wordCount}`, '']);
+
+                // 空行分隔
+                excelData.push(['', '', '']);
+
+                // 关键词指标（如果有补充信息）
+                if (supplementInfo && supplementInfo.keywordInfo) {
+                    const kw = supplementInfo.keywordInfo;
+                    excelData.push(['关键词指标', '', '']);
+                    excelData.push(['关键词', kw.keyword || '', '']);
+                    excelData.push(['排名位置', kw.position || '', '']);
+                    excelData.push(['搜索结果数量', kw.results || '', '']);
+                    excelData.push(['Intitle数量', kw.intitle || '', '']);
+                    excelData.push(['KGR', calculateKGR(kw.intitle, kw.results), '']);
+                    excelData.push(['获得流量', kw.traffic || '', '']);
+                    excelData.push(['', '', '']);
+                }
+
+                // 关键词密度
+                if (analysis.keywords && analysis.keywords.length > 0) {
+                    excelData.push(['关键词密度', '', '']);
+                    excelData.push(['关键词', '出现次数', '密度%']);
+
+                    analysis.keywords.forEach(keyword => {
+                        excelData.push([keyword.word, keyword.count.toString(), keyword.density]);
+                    });
+                    excelData.push(['', '', '']);
+                }
+
+                // H标签结构
+                if (analysis.headings && analysis.headings.length > 0) {
+                    excelData.push(['标题结构', '', '']);
+                    excelData.push(['标签类型', '标题内容', '']);
+
+                    analysis.headings.forEach(heading => {
+                        const tagDisplay = heading.tag.toUpperCase(); // 显示为H1, H2等
+                        excelData.push([tagDisplay, heading.text, '']);
+                    });
+                    excelData.push(['', '', '']);
+                }
+
+                // SERP竞争链接（如果有）
+                if (supplementInfo && supplementInfo.serpLinks && supplementInfo.serpLinks.length > 0) {
+                    excelData.push(['SERP竞争分析', '', '']);
+                    excelData.push(['序号', '标题', 'URL']);
+
+                    supplementInfo.serpLinks.forEach((link, index) => {
+                        excelData.push([(index + 1).toString(), link.title, link.url]);
+                    });
+                }
+
+                // 转换为制表符分隔的格式
+                const tsvContent = excelData.map(row => row.join('\t')).join('\n');
+
+                // 复制到剪贴板
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(tsvContent).then(() => {
+                        showCopySuccessNotification();
+                    }).catch(err => {
+                        console.error('复制失败:', err);
+                        fallbackCopyToClipboard(tsvContent);
+                    });
+                } else {
+                    fallbackCopyToClipboard(tsvContent);
+                }
+
+            } catch (error) {
+                console.error('复制到Excel失败:', error);
+                alert('复制失败，请重试');
+            }
+        }
+
+        function getStatusText(status) {
+            if (!status) return '';
+            switch (status) {
+                case 'good': return '良好';
+                case 'warning': return '警告';
+                case 'error': return '错误';
+                default: return status;
+            }
+        }
+
+        function calculateKGR(intitle, results) {
+            const intitleNum = parseFloat(intitle) || 0;
+            const resultsNum = parseFloat(results) || 0;
+            if (resultsNum === 0) return 'N/A';
+            return (intitleNum / resultsNum).toFixed(4);
+        }
+
+        function fallbackCopyToClipboard(text) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.top = '0';
+            textArea.style.left = '0';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+                showCopySuccessNotification();
+            } catch (err) {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动选择复制');
+            }
+
+            document.body.removeChild(textArea);
+        }
+
+        function showCopySuccessNotification() {
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+                <div style="position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 12px 16px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; font-size: 14px;">
+                    📋 已复制到剪贴板，可粘贴到Excel
+                    <button onclick="this.parentElement.remove()" style="background: none; border: none; color: white; margin-left: 10px; cursor: pointer; font-size: 16px;">×</button>
+                </div>
+            `;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 4000);
         }
 
         // 页面加载完成后执行恢复
