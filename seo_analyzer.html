@@ -335,6 +335,44 @@
             font-style: italic;
         }
 
+        .supplement-section {
+            margin-top: 16px;
+        }
+
+        .supplement-section h3 {
+            color: #644a40;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+        }
+
+        .serp-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fcfcfc;
+            border: 1px solid #d8d8d8;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .serp-table th {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #d8d8d8;
+            color: #644a40;
+            font-weight: 600;
+            background: #efefef;
+        }
+
+        .serp-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e8e8e8;
+            vertical-align: top;
+        }
+
+        .serp-table tr:last-child td {
+            border-bottom: none;
+        }
+
         .results {
             display: none;
         }
@@ -407,6 +445,15 @@
             <div class="card">
                 <h2 class="section-title">页面信息</h2>
                 <div class="meta-grid" id="basicInfo"></div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title">补充信息</h2>
+                <div style="margin-bottom: 16px;">
+                    <textarea id="supplementData" class="batch-textarea" placeholder="粘贴关键词信息和SERP链接数据...【&#10;&#10;关键词信息：&#10;Keyword    Position    Previous position    Search Volume    Keyword Difficulty    CPC    URL    Traffic    Traffic Cost    Competition    Number of Results    Trend    SERP Features by Keyword    Keyword Intents on Type&#10;two photos ai kissing free no prices    1    300    34    0    https://pollo.ai/video-effects/ai-kissing    322    0.78    0    0    73000000    elinks, Video, Video Carousel, Related searches    transactional    Organic&#10;&#10;SERP links&#10;URL&#10;网站标题&#10;https://funy.ai/ai-video/clipfly-ai-kissing-generator-free/    1    ClipFly AI Kissing Generator: Create Free Kiss Videos - Funy AI&#10;https://funy.ai/ai-kissing-video-free/    2    AI Kissing Video Generator Online - Free & No Sign Up】" style="height: 120px;"></textarea>
+                    <button class="btn" onclick="parseSupplementData()" style="margin-top: 8px;">解析数据</button>
+                </div>
+                <div id="supplementInfo" style="display: none;"></div>
             </div>
 
             <div class="card">
@@ -838,6 +885,187 @@
             setTimeout(() => {
                 errorDiv.style.display = 'none';
             }, 5000);
+        }
+
+        function parseSupplementData() {
+            const textarea = document.getElementById('supplementData');
+            const supplementInfo = document.getElementById('supplementInfo');
+            const data = textarea.value.trim();
+
+            if (!data) {
+                showError('请输入补充数据');
+                return;
+            }
+
+            try {
+                const result = parseKeywordAndSerpData(data);
+                displaySupplementInfo(result);
+                supplementInfo.style.display = 'block';
+            } catch (error) {
+                showError('数据解析失败，请检查数据格式');
+            }
+        }
+
+        function parseKeywordAndSerpData(data) {
+            const lines = data.split('\n').filter(line => line.trim());
+            const result = {
+                keywordInfo: null,
+                serpLinks: []
+            };
+
+            let currentSection = '';
+            let keywordHeaderFound = false;
+            let serpLinksStarted = false;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                if (line.includes('关键词信息') || line.includes('Keyword')) {
+                    currentSection = 'keyword';
+                    continue;
+                }
+
+                if (line.includes('SERP links') || line.includes('URL') && line.includes('网站标题')) {
+                    currentSection = 'serp';
+                    serpLinksStarted = true;
+                    continue;
+                }
+
+                if (currentSection === 'keyword' && line.includes('\t') && !keywordHeaderFound) {
+                    // 解析关键词数据行
+                    const parts = line.split('\t');
+                    if (parts.length >= 10) {
+                        result.keywordInfo = {
+                            keyword: parts[0] || '',
+                            position: parts[1] || '',
+                            difficulty: parts[4] || '',
+                            results: parts[10] || '',
+                            url: parts[6] || '',
+                            traffic: parts[7] || ''
+                        };
+                        keywordHeaderFound = true;
+                    }
+                }
+
+                if (currentSection === 'serp' && serpLinksStarted && line.includes('http')) {
+                    // 解析SERP链接
+                    const parsed = parseSerpLine(line);
+                    if (parsed) {
+                        result.serpLinks.push(parsed);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function parseSerpLine(line) {
+            // 示例格式：https://funy.ai/ai-video/clipfly-ai-kissing-generator-free/#:~:text=Merge%20t...1ClipFly AI Kissing Generator: Create Free Kiss Videos - Funy AIFuny AIhttps:...
+            // 或：https://funy.ai/ai-kissing-video-free/2AI Kissing Video Generator Online - Free & No Sign UpFuny AIhttps://funy.ai ...
+
+            // 提取开头的URL
+            const urlMatch = line.match(/^(https?:\/\/[^\s#]*[^\d])/);
+            if (!urlMatch) return null;
+
+            const url = urlMatch[1];
+            let remainingText = line.replace(urlMatch[0], '').trim();
+
+            // 移除开头可能的序号
+            remainingText = remainingText.replace(/^\d+/, '').trim();
+
+            // 查找标题：从序号后到"https"之前的内容
+            let title = '';
+            const httpsIndex = remainingText.indexOf('https');
+            if (httpsIndex > 0) {
+                title = remainingText.substring(0, httpsIndex).trim();
+            } else {
+                title = remainingText;
+            }
+
+            // 清理标题，移除多余的网站名称重复
+            title = title.replace(/([A-Za-z\s]+)\1+$/, '$1'); // 移除重复的网站名
+            title = title.replace(/\s+/g, ' ').trim(); // 规范化空格
+
+            if (!title) return null;
+
+            return {
+                url: url,
+                title: title
+            };
+        }
+
+        function displaySupplementInfo(data) {
+            const supplementDiv = document.getElementById('supplementInfo');
+            let html = '';
+
+            // 关键词信息
+            if (data.keywordInfo) {
+                const kw = data.keywordInfo;
+                html += `
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #644a40; margin-bottom: 12px; font-size: 1.1em;">关键词信息</h3>
+                        <div class="meta-grid">
+                            <div class="meta-item">
+                                <div class="meta-label">关键词（Keyword）</div>
+                                <div class="meta-value">${kw.keyword}</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">KD 难度（Keyword Difficulty）</div>
+                                <div class="meta-value">${kw.difficulty}</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Intitle结果数（Number of Results）</div>
+                                <div class="meta-value">${kw.results}</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">关键词页面关联（URL）</div>
+                                <div class="meta-value"><a href="${kw.url}" target="_blank" style="color: #644a40; text-decoration: underline;">${kw.url}</a></div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">实际获得流量（Traffic）</div>
+                                <div class="meta-value">${kw.traffic}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // SERP链接表格
+            if (data.serpLinks.length > 0) {
+                html += `
+                    <div>
+                        <h3 style="color: #644a40; margin-bottom: 12px; font-size: 1.1em;">SERP链接</h3>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; background: #fcfcfc; border: 1px solid #d8d8d8; border-radius: 6px;">
+                                <thead>
+                                    <tr style="background: #efefef;">
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600;">#</th>
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600;">标题</th>
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600;">网址</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+
+                data.serpLinks.forEach((link, index) => {
+                    html += `
+                        <tr style="border-bottom: 1px solid #e8e8e8;">
+                            <td style="padding: 12px; font-weight: 600; color: #644a40;">${index + 1}</td>
+                            <td style="padding: 12px; color: #202020; line-height: 1.4;">${link.title}</td>
+                            <td style="padding: 12px;"><a href="${link.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all;">${link.url}</a></td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            supplementDiv.innerHTML = html;
         }
 
         // 回车键支持
