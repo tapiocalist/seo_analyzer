@@ -46,8 +46,8 @@
             background: #fcfcfc;
             border: 1px solid #d8d8d8;
             border-radius: 8px;
-            padding: 24px;
-            margin-bottom: 24px;
+            padding: 20px;
+            margin-bottom: 16px;
         }
 
         .input-group {
@@ -113,11 +113,11 @@
         }
 
         .section-title {
-            font-size: 1.3em;
+            font-size: 1.2em;
             font-weight: 600;
             color: #644a40;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
             border-bottom: 1px solid #d8d8d8;
         }
 
@@ -195,14 +195,12 @@
         }
 
         .heading-item {
-            background: #efefef;
-            padding: 12px 16px;
-            border-radius: 6px;
+            padding: 6px 12px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 6px;
-            border-left: 3px solid #644a40;
+            gap: 8px;
+            margin-bottom: 4px;
+            border-left: 2px solid #644a40;
         }
 
         .heading-item.h1 {
@@ -234,7 +232,7 @@
         .keyword-categories {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
+            gap: 16px;
         }
 
         .keyword-category {
@@ -252,11 +250,11 @@
         }
 
         .keyword-list {
-            padding: 16px;
+            padding: 12px;
         }
 
         .keyword-item {
-            padding: 8px 0;
+            padding: 6px 0;
             border-bottom: 1px solid #e8e8e8;
         }
 
@@ -349,18 +347,21 @@
         }
 
         .serp-table th {
-            padding: 12px;
+            padding: 8px;
             text-align: left;
             border-bottom: 1px solid #d8d8d8;
             color: #644a40;
             font-weight: 600;
             background: #efefef;
+            font-size: 14px;
         }
 
         .serp-table td {
-            padding: 12px;
+            padding: 8px;
             border-bottom: 1px solid #e8e8e8;
             vertical-align: top;
+            font-size: 14px;
+            line-height: 1.3;
         }
 
         .serp-table tr:last-child td {
@@ -386,7 +387,7 @@
 
             .card > div[style*="grid-template-columns"] {
                 grid-template-columns: 1fr !important;
-                gap: 16px !important;
+                gap: 12px !important;
             }
         }
     </style>
@@ -435,19 +436,23 @@
         <div class="error" id="errorMessage"></div>
 
         <div class="results" id="results">
+            <!-- 页面信息和标题结构并列 -->
             <div class="card">
-                <h2 class="section-title">页面信息</h2>
-                <div class="meta-grid" id="basicInfo"></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <div>
+                        <h2 class="section-title">页面信息</h2>
+                        <div class="meta-grid" id="basicInfo"></div>
+                    </div>
+                    <div>
+                        <h2 class="section-title">标题结构 (H1-H2)</h2>
+                        <div id="headingsInfo"></div>
+                    </div>
+                </div>
             </div>
 
             <div id="supplementCard" class="card" style="display: none;">
                 <h2 class="section-title">补充信息</h2>
                 <div id="supplementInfo"></div>
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">标题结构 (H1-H2)</h2>
-                <div id="headingsInfo"></div>
             </div>
 
             <div class="card">
@@ -965,6 +970,13 @@
                 url: url,
                 title: title
             };
+        }
+
+        function handleFileSelect(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                updateFileStatus(file.name);
+            }
         }
 
         function displaySupplementInfo(data) {
