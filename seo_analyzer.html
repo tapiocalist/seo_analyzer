@@ -415,10 +415,11 @@
                 <div>
                     <h3 style="margin-bottom: 12px; color: #644a40;">分析HTML文件</h3>
                     <input type="file" id="fileInput" accept=".html,.htm" style="width: 100%; padding: 12px; border: 1px solid #d8d8d8; border-radius: 6px; font-size: 14px; background: #fcfcfc; color: #202020; margin-bottom: 8px;">
-                    <textarea id="supplementDataInput" class="batch-textarea" placeholder="可粘贴关键词信息和SERP链接数据，在分析HTML文件时一同处理..." style="height: 60px; margin-bottom: 8px;"></textarea>
+                    <textarea id="supplementDataInput" class="batch-textarea" placeholder="可粘贴关键词信息和SERP链接数据，在分析HTML文件时一同处理..." style="height: 60px; margin-bottom: 8px;" oninput="saveSupplementDataOnInput()"></textarea>
                     <div style="display: flex; gap: 8px;">
                         <button class="btn" onclick="analyzeFile()">分析网站</button>
                         <button class="btn" onclick="testParseData()" style="background: #666; font-size: 12px; padding: 8px 12px;">测试解析</button>
+                        <button class="btn" onclick="clearCacheData()" style="background: #dc3545; font-size: 12px; padding: 8px 12px;">清除缓存</button>
                     </div>
                 </div>
             </div>
@@ -477,6 +478,18 @@
                     </div>
                 </div>
                 <div id="supplementInfo"></div>
+
+                <!-- SERP下载进度显示 -->
+                <div id="serpProgress" class="progress-section" style="display: none; margin-top: 16px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span id="serpProgressText">准备下载...</span>
+                        <span id="serpProgressCount">0/0</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="serpProgressFill" class="progress-fill"></div>
+                    </div>
+                    <div id="serpProgressDetails" class="progress-details"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -513,6 +526,13 @@
                         console.warn('补充信息解析失败', error);
                     }
                 }
+
+                // 保存文件数据到localStorage
+                console.log('准备保存文件数据:', file.name);
+                saveFileData(file.name, html, {
+                    analysis: analysis,
+                    supplementInfo: supplementInfo
+                });
 
                 displayResults(analysis, supplementInfo);
             } catch (error) {
@@ -809,7 +829,6 @@
             const textarea = document.getElementById('batchUrls');
             const progressDiv = document.getElementById('batchProgress');
             const batchBtn = document.getElementById('batchBtn');
-            const autoAnalyze = document.getElementById('autoAnalyze').checked;
             
             const urls = textarea.value
                 .split('\n')
@@ -838,39 +857,45 @@
             progressDetails.innerHTML = '';
 
             try {
-                for (let i = 0; i < urls.length; i++) {
-                    const url = urls[i];
-                    progressText.textContent = `正在下载: ${url}`;
-                    
+                progressText.textContent = `开始并发下载 ${urls.length} 个链接...`;
+
+                // 创建所有下载任务
+                const downloadTasks = urls.map(async (url, i) => {
                     try {
-                        const response = await fetchPageContent(url);
+                        const response = await fetchPageContent(url, 12000); // 12秒超时
                         const html = await response.text();
-                        
+
                         const urlObj = new URL(url);
-                        const filename = `${urlObj.hostname}_${Date.now()}_${i + 1}.html`;
-                        
+                        const filename = `${urlObj.hostname}.html`;
+
                         downloadHTML(html, filename);
-                        
-                        successful++;
-                        results.push({ url, status: 'success', filename, html });
-                        
-                        progressDetails.innerHTML += `<div style="color: #644a40;">✓ ${url}</div>`;
-                        
+                        return { url, status: 'success', filename, html };
                     } catch (error) {
-                        results.push({ url, status: 'failed', error: error.message });
-                        progressDetails.innerHTML += `<div style="color: #e54d2e;">✗ ${url}</div>`;
+                        console.error(`下载失败 ${url}:`, error);
+                        return { url, status: 'failed', error: error.message };
                     }
-                    
+                });
+
+                // 等待所有任务完成，并实时更新进度
+                for (let taskIndex = 0; taskIndex < downloadTasks.length; taskIndex++) {
+                    const task = downloadTasks[taskIndex];
+                    const result = await task;
+                    results.push(result);
                     completed++;
+
+                    if (result.status === 'success') {
+                        successful++;
+                        progressDetails.innerHTML += `<div style="color: #644a40;">✓ ${result.url}</div>`;
+                    } else {
+                        progressDetails.innerHTML += `<div style="color: #e54d2e;">✗ ${result.url} (${result.error})</div>`;
+                    }
+
                     progressCount.textContent = `${completed}/${urls.length}`;
                     progressFill.style.width = `${(completed / urls.length) * 100}%`;
-                    
-                    if (i < urls.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                    }
+                    progressText.textContent = `已完成: ${completed}/${urls.length}`;
                 }
-                
-                progressText.textContent = `下载完成！成功: ${successful}个`;
+
+                progressText.textContent = `批量下载完成！成功: ${successful}个`;
                 
                 // 批量下载后自动分析第一个成功的文件
                 if (results.length > 0) {
@@ -1230,10 +1255,13 @@
 
                 data.serpLinks.forEach((link, index) => {
                     html += `
-                        <tr style="border-bottom: 1px solid #e8e8e8;">
+                        <tr style="border-bottom: 1px solid #e8e8e8;" id="serp-row-${index}">
                             <td style="padding: 8px; font-weight: 600; color: #644a40; font-size: 14px; line-height: 1.3;">${index + 1}</td>
                             <td style="padding: 8px; color: #202020; line-height: 1.3; font-size: 14px;">${link.title}</td>
-                            <td style="padding: 8px; font-size: 14px; line-height: 1.3;"><a href="${link.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all;">${link.url}</a></td>
+                            <td style="padding: 8px; font-size: 14px; line-height: 1.3;">
+                                <a href="${link.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all;">${link.url}</a>
+                                <span id="download-status-${index}" style="margin-left: 8px; color: #28a745; font-weight: bold;"></span>
+                            </td>
                         </tr>
                     `;
                 });
@@ -1269,12 +1297,244 @@
         // 全局变量存储SERP链接数据
         let globalSerpLinks = [];
 
+        // 数据持久化相关函数
+        const STORAGE_KEY = 'seo_analyzer_data';
+        const STORAGE_EXPIRY_DAYS = 7;
+
+        function saveToStorage(data) {
+            try {
+                const storageData = {
+                    ...data,
+                    timestamp: Date.now(),
+                    expiryTime: Date.now() + (STORAGE_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
+                console.log('数据已保存到localStorage:', Object.keys(data));
+            } catch (error) {
+                console.warn('保存到localStorage失败:', error);
+            }
+        }
+
+        function loadFromStorage() {
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                if (!stored) return null;
+
+                const data = JSON.parse(stored);
+
+                // 检查是否过期
+                if (data.expiryTime && Date.now() > data.expiryTime) {
+                    localStorage.removeItem(STORAGE_KEY);
+                    console.log('localStorage数据已过期，已清除');
+                    return null;
+                }
+
+                console.log('从localStorage恢复数据');
+                return data;
+            } catch (error) {
+                console.warn('从localStorage读取失败:', error);
+                return null;
+            }
+        }
+
+        function clearStorage() {
+            localStorage.removeItem(STORAGE_KEY);
+            console.log('localStorage数据已清除');
+        }
+
+        function saveFileData(fileName, fileContent, analysisResult = null) {
+            const currentData = loadFromStorage() || {};
+            const fileData = {
+                uploadedFile: {
+                    name: fileName,
+                    content: fileContent,
+                    uploadTime: Date.now()
+                }
+            };
+
+            if (analysisResult) {
+                fileData.analysisResults = analysisResult;
+            }
+
+            saveToStorage({
+                ...currentData,
+                ...fileData
+            });
+        }
+
+        function saveSupplementData(supplementText, parsedData = null) {
+            const currentData = loadFromStorage() || {};
+            const supplementData = {
+                supplementData: supplementText
+            };
+
+            if (parsedData) {
+                supplementData.parsedSupplementData = parsedData;
+            }
+
+            saveToStorage({
+                ...currentData,
+                ...supplementData
+            });
+        }
+
+        // 实时保存补充信息
+        let saveTimeout;
+        function saveSupplementDataOnInput() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                const supplementText = document.getElementById('supplementDataInput').value.trim();
+                if (supplementText) {
+                    try {
+                        const parsedData = parseKeywordAndSerpData(supplementText);
+                        saveSupplementData(supplementText, parsedData);
+                    } catch (error) {
+                        saveSupplementData(supplementText);
+                    }
+                }
+            }, 1000); // 1秒后保存，避免频繁保存
+        }
+
+        // 页面加载时恢复数据
+        function restoreDataOnLoad() {
+            const savedData = loadFromStorage();
+            if (!savedData) return;
+
+            let hasRestored = false;
+
+            // 恢复上传的文件信息和分析结果
+            if (savedData.uploadedFile) {
+                // 创建文件状态指示器
+                createFileStatusIndicator(savedData.uploadedFile.name);
+
+                // 如果有分析结果，直接显示
+                if (savedData.analysisResults) {
+                    displayResults(savedData.analysisResults.analysis, savedData.analysisResults.supplementInfo);
+                    hasRestored = true;
+                }
+            }
+
+            // 恢复补充信息
+            if (savedData.supplementData) {
+                const supplementInput = document.getElementById('supplementDataInput');
+                if (supplementInput) {
+                    supplementInput.value = savedData.supplementData;
+                    hasRestored = true;
+                }
+            }
+
+            // 显示恢复提示
+            if (hasRestored) {
+                showRestoreNotification();
+            }
+        }
+
+        function createFileStatusIndicator(fileName) {
+            // 在文件输入框下方显示已恢复的文件状态
+            const fileInput = document.getElementById('fileInput');
+            let statusDiv = document.getElementById('fileRestoreStatus');
+
+            if (!statusDiv) {
+                statusDiv = document.createElement('div');
+                statusDiv.id = 'fileRestoreStatus';
+                fileInput.parentNode.insertBefore(statusDiv, fileInput.nextSibling);
+            }
+
+            statusDiv.innerHTML = `
+                <div style="padding: 8px 12px; background: #e8f5e8; border: 1px solid #c3e6c3; border-radius: 4px; margin-top: 8px; font-size: 13px; color: #2d5a2d;">
+                    ✓ 已恢复文件: <strong>${fileName}</strong>
+                    <button onclick="clearRestoredFile()" style="background: none; border: none; color: #dc3545; margin-left: 10px; cursor: pointer; font-size: 12px;">清除</button>
+                </div>
+            `;
+        }
+
+        function clearRestoredFile() {
+            const statusDiv = document.getElementById('fileRestoreStatus');
+            if (statusDiv) {
+                statusDiv.remove();
+            }
+
+            // 清除localStorage中的文件数据
+            const currentData = loadFromStorage();
+            if (currentData) {
+                delete currentData.uploadedFile;
+                delete currentData.analysisResults;
+                saveToStorage(currentData);
+            }
+
+            // 隐藏分析结果
+            document.getElementById('results').style.display = 'none';
+        }
+
+        function showRestoreNotification() {
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+                <div style="position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 12px 16px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; font-size: 14px;">
+                    ✓ 已恢复之前的数据
+                    <button onclick="this.parentElement.remove()" style="background: none; border: none; color: white; margin-left: 10px; cursor: pointer; font-size: 16px;">×</button>
+                </div>
+            `;
+            document.body.appendChild(notification);
+
+            // 3秒后自动消失
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 3000);
+        }
+
+        // 清除缓存数据
+        function clearCacheData() {
+            if (confirm('确定要清除所有保存的数据吗？这将删除已上传的文件和补充信息。')) {
+                clearStorage();
+
+                // 清除界面
+                document.getElementById('fileInput').value = '';
+                document.getElementById('supplementDataInput').value = '';
+                document.getElementById('results').style.display = 'none';
+
+                // 清除文件恢复状态指示器
+                const statusDiv = document.getElementById('fileRestoreStatus');
+                if (statusDiv) {
+                    statusDiv.remove();
+                }
+
+                // 显示清除成功提示
+                showClearNotification();
+            }
+        }
+
+        function showClearNotification() {
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+                <div style="position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 16px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; font-size: 14px;">
+                    🗑️ 缓存数据已清除
+                    <button onclick="this.parentElement.remove()" style="background: none; border: none; color: white; margin-left: 10px; cursor: pointer; font-size: 16px;">×</button>
+                </div>
+            `;
+            document.body.appendChild(notification);
+
+            // 3秒后自动消失
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 3000);
+        }
+
+        // 页面加载完成后执行恢复
+        window.addEventListener('DOMContentLoaded', function() {
+            setTimeout(restoreDataOnLoad, 100);
+        });
+
         // CORS代理服务列表
         const proxyUrls = [
-            'https://api.allorigins.win/get?url=',
-            'https://corsproxy.io/?',
             'https://api.codetabs.com/v1/proxy?quest=',
-            'https://thingproxy.freeboard.io/fetch/'
+            'https://thingproxy.freeboard.io/fetch/',
+            'https://cors-anywhere.herokuapp.com/',
+            'https://crossorigin.me/',
+            'https://api.allorigins.win/get?url='
         ];
 
         async function fetchPageContent(url, timeout = 12000) {
@@ -1319,8 +1579,29 @@
                         if (response.ok) {
                             return response;
                         }
+                    } else if (proxyUrls[i].includes('cors-anywhere')) {
+                        proxyUrl = `${proxyUrls[i]}${url}`;  // cors-anywhere不需要编码
+                        response = await fetch(proxyUrl, {
+                            signal: controller.signal,
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        });
+                        clearTimeout(timeoutId);
+
+                        if (response.ok) {
+                            return response;
+                        }
+                    } else if (proxyUrls[i].includes('crossorigin')) {
+                        proxyUrl = `${proxyUrls[i]}${url}`;  // crossorigin.me不需要编码
+                        response = await fetch(proxyUrl, { signal: controller.signal });
+                        clearTimeout(timeoutId);
+
+                        if (response.ok) {
+                            return response;
+                        }
                     } else {
-                        // corsproxy 和其他代理
+                        // 其他代理
                         proxyUrl = `${proxyUrls[i]}${encodedUrl}`;
                         response = await fetch(proxyUrl, { signal: controller.signal });
                         clearTimeout(timeoutId);
@@ -1344,13 +1625,13 @@
                 return;
             }
 
-            const progressDiv = document.getElementById('batchProgress');
+            const progressDiv = document.getElementById('serpProgress');
             progressDiv.style.display = 'block';
 
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
-            const progressCount = document.getElementById('progressCount');
-            const progressDetails = document.getElementById('progressDetails');
+            const progressFill = document.getElementById('serpProgressFill');
+            const progressText = document.getElementById('serpProgressText');
+            const progressCount = document.getElementById('serpProgressCount');
+            const progressDetails = document.getElementById('serpProgressDetails');
 
             let completed = 0;
             let successful = 0;
@@ -1381,7 +1662,8 @@
 
                 // 等待所有任务完成，并实时更新进度
                 const results = [];
-                for (const task of downloadTasks) {
+                for (let taskIndex = 0; taskIndex < downloadTasks.length; taskIndex++) {
+                    const task = downloadTasks[taskIndex];
                     const result = await task;
                     results.push(result);
                     completed++;
@@ -1389,8 +1671,23 @@
                     if (result.status === 'success') {
                         successful++;
                         progressDetails.innerHTML += `<div style="color: #644a40;">✓ ${result.url}</div>`;
+
+                        // 在SERP表格中添加✓标记
+                        const statusElement = document.getElementById(`download-status-${taskIndex}`);
+                        if (statusElement) {
+                            statusElement.textContent = '✓';
+                            statusElement.title = '已下载';
+                        }
                     } else {
                         progressDetails.innerHTML += `<div style="color: #e54d2e;">✗ ${result.url} (${result.error})</div>`;
+
+                        // 在SERP表格中添加✗标记
+                        const statusElement = document.getElementById(`download-status-${taskIndex}`);
+                        if (statusElement) {
+                            statusElement.textContent = '✗';
+                            statusElement.style.color = '#dc3545';
+                            statusElement.title = '下载失败';
+                        }
                     }
 
                     progressCount.textContent = `${completed}/${urls.length}`;
@@ -1399,6 +1696,11 @@
                 }
 
                 progressText.textContent = `SERP链接下载完成！成功: ${successful}个`;
+
+                // 播放完成声音并隐藏进度条
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                }, 2000);
 
             } catch (error) {
                 showError('SERP链接批量下载失败: ' + error.message);
