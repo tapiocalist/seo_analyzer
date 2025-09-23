@@ -1727,8 +1727,8 @@
                 dataRow.push(analysis.description || ''); // 页面描述
 
                 // H标签
-                const h1Tags = analysis.headings?.filter(h => h.tag === 'h1').map(h => h.text || h.content || '').join('\n') || '';
-                const h2Tags = analysis.headings?.filter(h => h.tag === 'h2').map(h => h.text || h.content || '').join('\n') || '';
+                const h1Tags = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('; ') || '';
+                const h2Tags = analysis.headings?.filter(h => h.level === 2).map(h => h.text).join('; ') || '';
                 dataRow.push(h1Tags); // H1
                 dataRow.push(h2Tags); // H2
 
@@ -1736,10 +1736,10 @@
                 dataRow.push(analysis.wordCount || '0'); // 单词数
 
                 // 关键词密度（按词数分组）
-                const keywords1 = analysis.keywords?.single?.map(k => `${k.word}(${k.count})`).join('\n') || '';
-                const keywords2 = analysis.keywords?.double?.map(k => `${k.word}(${k.count})`).join('\n') || '';
-                const keywords3 = analysis.keywords?.triple?.map(k => `${k.word}(${k.count})`).join('\n') || '';
-                const keywords4 = analysis.keywords?.quadruple?.map(k => `${k.word}(${k.count})`).join('\n') || '';
+                const keywords1 = analysis.keywords?.single?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+                const keywords2 = analysis.keywords?.double?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+                const keywords3 = analysis.keywords?.triple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+                const keywords4 = analysis.keywords?.quadruple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
 
                 dataRow.push(keywords1); // 1词
                 dataRow.push(keywords2); // 2词
@@ -1748,8 +1748,8 @@
 
                 // SERP竞争分析
                 if (supplementInfo && supplementInfo.serpLinks && supplementInfo.serpLinks.length > 0) {
-                    const serpTitles = supplementInfo.serpLinks.map(link => link.title).join('\n');
-                    const serpUrls = supplementInfo.serpLinks.map(link => link.url).join('\n');
+                    const serpTitles = supplementInfo.serpLinks.map(link => link.title).join('; ');
+                    const serpUrls = supplementInfo.serpLinks.map(link => link.url).join('; ');
                     dataRow.push(serpTitles); // SERP竞争分析标题
                     dataRow.push(serpUrls); // SERP竞争分析网址
                 } else {
