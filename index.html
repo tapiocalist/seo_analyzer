@@ -411,26 +411,27 @@
             <div id="historyList" style="max-height: 120px; overflow-y: auto;"></div>
         </div>
 
+        <!-- 批量下载HTML区域 -->
         <div class="card">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-                <!-- 批量下载区域 -->
-                <div>
-                    <h3 style="margin-bottom: 12px; color: #644a40;">批量下载HTML</h3>
-                    <textarea id="batchUrls" class="batch-textarea" placeholder="每行一个URL：&#10;https://www.example1.com&#10;https://www.example2.com" style="height: 112px; margin-bottom: 8px;"></textarea>
-                    <button class="btn" onclick="batchDownload()" id="batchBtn">批量下载</button>
-                </div>
+            <h3 style="margin-bottom: 12px; color: #644a40;">批量下载HTML</h3>
+            <textarea id="batchUrls" class="batch-textarea" placeholder="每行一个URL：&#10;https://www.example1.com&#10;https://www.example2.com" style="height: 112px; margin-bottom: 8px;"></textarea>
+            <button class="btn" onclick="batchDownload()" id="batchBtn">批量下载</button>
+        </div>
 
-                <!-- 文件分析区域 -->
-                <div>
-                    <h3 style="margin-bottom: 12px; color: #644a40;">分析HTML文件</h3>
-                    <input type="file" id="fileInput" accept=".html,.htm" style="width: 100%; padding: 12px; border: 1px solid #d8d8d8; border-radius: 6px; font-size: 14px; background: #fcfcfc; color: #202020; margin-bottom: 8px;">
-                    <textarea id="supplementDataInput" class="batch-textarea" placeholder="可粘贴关键词信息和SERP链接数据，在分析HTML文件时一同处理..." style="height: 60px; margin-bottom: 8px;" oninput="saveSupplementDataOnInput()"></textarea>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn" onclick="analyzeFile()">分析网站</button>
-                        <button class="btn" onclick="clearCacheData()" style="background: #dc3545; font-size: 12px; padding: 8px 12px;">清除缓存</button>
-                    </div>
-                </div>
+        <!-- 分析HTML文件区域 -->
+        <div class="card">
+            <h3 style="margin-bottom: 12px; color: #644a40;">分析HTML文件</h3>
+            <input type="file" id="fileInput" accept=".html,.htm" multiple style="width: 100%; padding: 12px; border: 1px solid #d8d8d8; border-radius: 6px; font-size: 14px; background: #fcfcfc; color: #202020; margin-bottom: 8px;">
+
+            <!-- 文件列表显示区域 -->
+            <div id="fileList" style="margin-bottom: 12px;"></div>
+
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <button class="btn" onclick="analyzeAllFiles()" id="analyzeAllBtn" style="display: none;">分析全部</button>
+                <button class="btn" onclick="copyAllToExcel()" id="copyAllBtn" style="background: #28a745; display: none;">复制全部到Excel</button>
+                <button class="btn" onclick="clearCacheData()" style="background: #dc3545; font-size: 12px; padding: 8px 12px;">清除缓存</button>
             </div>
+        </div>
 
             <div id="batchProgress" class="progress-section">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
@@ -1882,8 +1883,515 @@
             setTimeout(() => {
                 restoreDataOnLoad();
                 displayHistory();
+                initializeFileInput();
             }, 100);
         });
+
+        // 存储上传的文件
+        let uploadedFiles = [];
+
+        // 初始化文件输入监听器
+        function initializeFileInput() {
+            const fileInput = document.getElementById('fileInput');
+            fileInput.addEventListener('change', handleFileSelection);
+        }
+
+        // 处理文件选择
+        function handleFileSelection(event) {
+            const files = Array.from(event.target.files);
+            uploadedFiles = files;
+            displayFileList();
+        }
+
+        // 显示文件列表
+        function displayFileList() {
+            const fileListDiv = document.getElementById('fileList');
+            const analyzeAllBtn = document.getElementById('analyzeAllBtn');
+            const copyAllBtn = document.getElementById('copyAllBtn');
+
+            if (uploadedFiles.length === 0) {
+                fileListDiv.innerHTML = '';
+                analyzeAllBtn.style.display = 'none';
+                copyAllBtn.style.display = 'none';
+                return;
+            }
+
+            analyzeAllBtn.style.display = 'inline-block';
+            copyAllBtn.style.display = 'none'; // 只有分析完成后才显示
+
+            fileListDiv.innerHTML = uploadedFiles.map((file, index) => `
+                <div class="file-item" style="border: 1px solid #d8d8d8; border-radius: 6px; padding: 12px; margin-bottom: 8px; background: #fcfcfc;">
+                    <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
+                        <strong style="color: #644a40; font-size: 14px;">${file.name}</strong>
+                        <button class="btn" onclick="viewFileDetails(${index})" id="detailBtn-${index}" style="background: #ccc; font-size: 12px; padding: 4px 8px; margin-left: auto;" disabled>查看详情</button>
+                    </div>
+                    <textarea class="supplement-input" data-file-index="${index}" placeholder="为此文件输入补充信息（关键词信息和SERP链接数据）..." style="width: 100%; height: 60px; padding: 8px; border: 1px solid #d8d8d8; border-radius: 4px; font-size: 13px; resize: vertical;"></textarea>
+                </div>
+            `).join('');
+        }
+
+        // 存储所有分析结果
+        let allAnalysisResults = [];
+
+        // 批量分析所有文件
+        async function analyzeAllFiles() {
+            if (uploadedFiles.length === 0) {
+                alert('请先上传文件');
+                return;
+            }
+
+            allAnalysisResults = [];
+            const analyzeAllBtn = document.getElementById('analyzeAllBtn');
+            const originalText = analyzeAllBtn.textContent;
+
+            try {
+                analyzeAllBtn.textContent = '分析中...';
+                analyzeAllBtn.disabled = true;
+
+                for (let i = 0; i < uploadedFiles.length; i++) {
+                    const file = uploadedFiles[i];
+                    const supplementInput = document.querySelector(`textarea[data-file-index="${i}"]`);
+                    const supplementData = supplementInput ? supplementInput.value.trim() : '';
+
+                    analyzeAllBtn.textContent = `分析中... (${i + 1}/${uploadedFiles.length})`;
+
+                    try {
+                        // 分析单个文件
+                        const analysis = await analyzeFileContent(file);
+
+                        // 解析补充信息
+                        let supplementInfo = null;
+                        if (supplementData) {
+                            supplementInfo = parseKeywordAndSerpData(supplementData);
+                        }
+
+                        allAnalysisResults.push({
+                            fileName: file.name,
+                            analysis: analysis,
+                            supplementInfo: supplementInfo
+                        });
+
+                    } catch (error) {
+                        console.error(`分析文件 ${file.name} 时出错:`, error);
+                        allAnalysisResults.push({
+                            fileName: file.name,
+                            analysis: null,
+                            supplementInfo: null,
+                            error: error.message
+                        });
+                    }
+                }
+
+                analyzeAllBtn.textContent = '分析完成';
+                const copyAllBtn = document.getElementById('copyAllBtn');
+                copyAllBtn.style.display = 'inline-block'; // 分析完成后显示复制按钮
+
+                // 启用所有详情按钮
+                for (let i = 0; i < uploadedFiles.length; i++) {
+                    const detailBtn = document.getElementById(`detailBtn-${i}`);
+                    if (detailBtn) {
+                        detailBtn.disabled = false;
+                        detailBtn.style.background = '#666';
+                    }
+                }
+
+                setTimeout(() => {
+                    analyzeAllBtn.textContent = originalText;
+                    analyzeAllBtn.disabled = false;
+                }, 2000);
+
+            } catch (error) {
+                console.error('批量分析出错:', error);
+                analyzeAllBtn.textContent = originalText;
+                analyzeAllBtn.disabled = false;
+                alert('批量分析出错: ' + error.message);
+            }
+        }
+
+        // 分析单个文件内容
+        async function analyzeFileContent(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const htmlContent = e.target.result;
+                        const analysis = analyzePage(htmlContent, file.name);
+                        resolve(analysis);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = function() {
+                    reject(new Error('文件读取失败'));
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        // 批量复制到Excel
+        function copyAllToExcel() {
+            if (allAnalysisResults.length === 0) {
+                alert('请先分析文件');
+                return;
+            }
+
+            try {
+                const headers = [
+                    '文件名', '关键词', 'URL', '获得流量', '搜索结果数量', 'Intitle', 'KD难度', 'KGR',
+                    '页面标题', '页面描述', 'H1', 'H2', '单词数',
+                    '1词', '2词', '3词', '4词',
+                    'SERP竞争分析标题', 'SERP竞争分析网址'
+                ];
+
+                const dataRows = allAnalysisResults.map(result => {
+                    if (result.error) {
+                        return [result.fileName, '分析失败', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+                    }
+
+                    const { fileName, analysis, supplementInfo } = result;
+                    const dataRow = [];
+
+                    dataRow.push(fileName); // 文件名
+
+                    // 关键词指标
+                    if (supplementInfo && supplementInfo.keywordInfo) {
+                        const kw = supplementInfo.keywordInfo;
+                        dataRow.push(kw.keyword || ''); // 关键词
+                        dataRow.push(kw.url || ''); // URL
+                        dataRow.push(kw.traffic || ''); // 获得流量
+                        dataRow.push(kw.results || ''); // 搜索结果数量
+                        dataRow.push(kw.intitle || ''); // Intitle
+                        dataRow.push(kw.difficulty || ''); // KD难度
+                        dataRow.push(calculateKGR(kw.intitle, kw.results)); // KGR
+                    } else {
+                        dataRow.push('', '', '', '', '', '', ''); // 空的关键词指标
+                    }
+
+                    // 页面信息
+                    dataRow.push(analysis.title || ''); // 页面标题
+                    dataRow.push(analysis.description || ''); // 页面描述
+
+                    // H标签
+                    const h1Tags = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('; ') || '';
+                    const h2Tags = analysis.headings?.filter(h => h.level === 2).map(h => h.text).join('; ') || '';
+                    dataRow.push(h1Tags); // H1
+                    dataRow.push(h2Tags); // H2
+
+                    // 单词数
+                    dataRow.push(analysis.wordCount || '0'); // 单词数
+
+                    // 关键词密度（按词数分组）
+                    const keywords1 = analysis.keywords?.single?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+                    const keywords2 = analysis.keywords?.double?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+                    const keywords3 = analysis.keywords?.triple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+                    const keywords4 = analysis.keywords?.quadruple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+
+                    dataRow.push(keywords1); // 1词
+                    dataRow.push(keywords2); // 2词
+                    dataRow.push(keywords3); // 3词
+                    dataRow.push(keywords4); // 4词
+
+                    // SERP竞争分析
+                    if (supplementInfo && supplementInfo.serpLinks && supplementInfo.serpLinks.length > 0) {
+                        const serpTitles = supplementInfo.serpLinks.map(link => link.title).join('; ');
+                        const serpUrls = supplementInfo.serpLinks.map(link => link.url).join('; ');
+                        dataRow.push(serpTitles); // SERP竞争分析标题
+                        dataRow.push(serpUrls); // SERP竞争分析网址
+                    } else {
+                        dataRow.push('', ''); // 空的SERP数据
+                    }
+
+                    return dataRow;
+                });
+
+                const excelData = [headers, ...dataRows];
+
+                // 转换为制表符分隔的格式
+                const tsvContent = excelData.map(row => row.join('\t')).join('\n');
+
+                // 复制到剪贴板
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(tsvContent).then(() => {
+                        showCopySuccessNotification('批量数据已复制到剪贴板');
+                    }).catch(err => {
+                        console.warn('Clipboard API失败，使用fallback:', err);
+                        fallbackCopyToClipboard(tsvContent);
+                    });
+                } else {
+                    fallbackCopyToClipboard(tsvContent);
+                }
+
+            } catch (error) {
+                console.error('批量复制到Excel失败:', error);
+                alert('复制失败：' + error.message);
+            }
+        }
+
+        function showCopySuccessNotification(message) {
+            // 创建一个临时的成功提示
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #28a745;
+                color: white;
+                padding: 12px 20px;
+                border-radius: 6px;
+                font-size: 14px;
+                z-index: 1000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
+        }
+
+        // 查看单个文件的详情
+        function viewFileDetails(fileIndex) {
+            if (fileIndex >= uploadedFiles.length) {
+                alert('文件索引错误');
+                return;
+            }
+
+            if (allAnalysisResults.length === 0) {
+                alert('请先点击"分析全部"进行分析');
+                return;
+            }
+
+            const result = allAnalysisResults[fileIndex];
+            if (!result) {
+                alert('该文件的分析结果不存在，请重新分析');
+                return;
+            }
+
+            // 创建一个新窗口来显示详情
+            const detailWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes');
+
+            if (!detailWindow) {
+                alert('无法打开新窗口，请检查浏览器设置');
+                return;
+            }
+
+            if (result.error) {
+                // 显示错误信息
+                detailWindow.document.write(`
+                    <html>
+                    <head><title>分析错误</title></head>
+                    <body style="font-family: system-ui; padding: 20px;">
+                        <h2>分析文件出错</h2>
+                        <p>文件名: ${result.fileName}</p>
+                        <p>错误信息: ${result.error}</p>
+                    </body>
+                    </html>
+                `);
+            } else {
+                // 生成详情页面的HTML
+                const detailHTML = generateDetailPageHTML(result.fileName, result.analysis, result.supplementInfo);
+                detailWindow.document.write(detailHTML);
+            }
+
+            detailWindow.document.close();
+        }
+
+        // 生成详情页面的HTML
+        function generateDetailPageHTML(fileName, analysis, supplementInfo) {
+            return `
+                <!DOCTYPE html>
+                <html lang="zh-CN">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>SEO分析详情 - ${fileName}</title>
+                    <style>
+                        body {
+                            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+                            margin: 0;
+                            padding: 20px;
+                            background: #f9f9f9;
+                            line-height: 1.5;
+                            color: #202020;
+                        }
+                        .header {
+                            background: #644a40;
+                            color: white;
+                            padding: 20px;
+                            border-radius: 8px;
+                            margin-bottom: 20px;
+                        }
+                        .card {
+                            background: #fcfcfc;
+                            border: 1px solid #d8d8d8;
+                            border-radius: 8px;
+                            padding: 20px;
+                            margin-bottom: 20px;
+                        }
+                        .section-title {
+                            color: #644a40;
+                            font-size: 16px;
+                            font-weight: 600;
+                            margin-bottom: 12px;
+                        }
+                        .meta-grid {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 12px;
+                        }
+                        .meta-item {
+                            padding: 12px;
+                            background: #f8f8f8;
+                            border-radius: 6px;
+                            border-left: 3px solid #644a40;
+                        }
+                        .keyword-categories {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                            gap: 20px;
+                        }
+                        .keyword-category {
+                            background: #f8f8f8;
+                            padding: 16px;
+                            border-radius: 8px;
+                        }
+                        .keyword-list {
+                            list-style: none;
+                            padding: 0;
+                            margin: 8px 0 0 0;
+                        }
+                        .keyword-item {
+                            padding: 6px 0;
+                            display: flex;
+                            justify-content: space-between;
+                            border-bottom: 1px solid #e8e8e8;
+                        }
+                        .serp-links {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                            gap: 12px;
+                        }
+                        .serp-link {
+                            padding: 12px;
+                            background: #f8f8f8;
+                            border-radius: 6px;
+                            border-left: 3px solid #644a40;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>SEO分析详情</h1>
+                        <p style="margin: 8px 0 0 0; opacity: 0.9;">文件名: ${fileName}</p>
+                    </div>
+
+                    ${generateBasicInfoSection(analysis, supplementInfo)}
+                    ${generateKeywordsSection(analysis)}
+                    ${generateSERPSection(supplementInfo)}
+                </body>
+                </html>
+            `;
+        }
+
+        // 生成基本信息部分
+        function generateBasicInfoSection(analysis, supplementInfo) {
+            let html = '<div class="card"><h2 class="section-title">页面信息</h2><div class="meta-grid">';
+
+            // 关键词指标
+            if (supplementInfo && supplementInfo.keywordInfo) {
+                const kw = supplementInfo.keywordInfo;
+                html += `
+                    <div class="meta-item"><strong>关键词:</strong> ${kw.keyword || '无'}</div>
+                    <div class="meta-item"><strong>URL:</strong> ${kw.url || '无'}</div>
+                    <div class="meta-item"><strong>获得流量:</strong> ${kw.traffic || '无'}</div>
+                    <div class="meta-item"><strong>搜索结果数量:</strong> ${kw.results || '无'}</div>
+                    <div class="meta-item"><strong>Intitle:</strong> ${kw.intitle || '无'}</div>
+                    <div class="meta-item"><strong>KD难度:</strong> ${kw.difficulty || '无'}</div>
+                    <div class="meta-item"><strong>KGR:</strong> ${calculateKGR(kw.intitle, kw.results)}</div>
+                `;
+            }
+
+            // 页面基本信息
+            html += `
+                <div class="meta-item"><strong>页面标题:</strong> ${analysis.title || '无'}</div>
+                <div class="meta-item"><strong>页面描述:</strong> ${analysis.description || '无'}</div>
+                <div class="meta-item"><strong>单词数:</strong> ${analysis.wordCount || 0}</div>
+            `;
+
+            // H标签
+            if (analysis.headings && analysis.headings.length > 0) {
+                const h1Tags = analysis.headings.filter(h => h.level === 1).map(h => h.text).join(', ');
+                const h2Tags = analysis.headings.filter(h => h.level === 2).map(h => h.text).join(', ');
+                html += `
+                    <div class="meta-item"><strong>H1标签:</strong> ${h1Tags || '无'}</div>
+                    <div class="meta-item"><strong>H2标签:</strong> ${h2Tags || '无'}</div>
+                `;
+            }
+
+            html += '</div></div>';
+            return html;
+        }
+
+        // 生成关键词部分
+        function generateKeywordsSection(analysis) {
+            if (!analysis.keywords) return '';
+
+            let html = '<div class="card"><h2 class="section-title">关键词密度</h2><div class="keyword-categories">';
+
+            const categories = [
+                { key: 'single', title: '1词组合' },
+                { key: 'double', title: '2词组合' },
+                { key: 'triple', title: '3词组合' },
+                { key: 'quadruple', title: '4词组合' }
+            ];
+
+            categories.forEach(category => {
+                const keywords = analysis.keywords[category.key] || [];
+                if (keywords.length > 0) {
+                    html += `
+                        <div class="keyword-category">
+                            <h3>${category.title}</h3>
+                            <ul class="keyword-list">
+                                ${keywords.map(k => `
+                                    <li class="keyword-item">
+                                        <span>${k.word}</span>
+                                        <span>${k.count}次</span>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+            });
+
+            html += '</div></div>';
+            return html;
+        }
+
+        // 生成SERP部分
+        function generateSERPSection(supplementInfo) {
+            if (!supplementInfo || !supplementInfo.serpLinks || supplementInfo.serpLinks.length === 0) {
+                return '';
+            }
+
+            let html = '<div class="card"><h2 class="section-title">SERP竞争分析</h2><div class="serp-links">';
+
+            supplementInfo.serpLinks.forEach(link => {
+                html += `
+                    <div class="serp-link">
+                        <strong>${link.title}</strong>
+                        <br>
+                        <a href="${link.url}" target="_blank" style="color: #644a40; text-decoration: none; font-size: 13px;">${link.url}</a>
+                    </div>
+                `;
+            });
+
+            html += '</div></div>';
+            return html;
+        }
 
         // CORS代理服务列表
         const proxyUrls = [
