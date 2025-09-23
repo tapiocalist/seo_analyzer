@@ -2202,228 +2202,46 @@
                 return;
             }
 
-            // 创建一个新窗口来显示详情
-            const detailWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes');
-
-            if (!detailWindow) {
-                alert('无法打开新窗口，请检查浏览器设置');
+            if (result.error) {
+                alert(`分析文件 ${result.fileName} 时出错: ${result.error}`);
                 return;
             }
 
-            if (result.error) {
-                // 显示错误信息
-                detailWindow.document.write(`
-                    <html>
-                    <head><title>分析错误</title></head>
-                    <body style="font-family: system-ui; padding: 20px;">
-                        <h2>分析文件出错</h2>
-                        <p>文件名: ${result.fileName}</p>
-                        <p>错误信息: ${result.error}</p>
-                    </body>
-                    </html>
-                `);
-            } else {
-                // 生成详情页面的HTML
-                const detailHTML = generateDetailPageHTML(result.fileName, result.analysis, result.supplementInfo);
-                detailWindow.document.write(detailHTML);
-            }
+            // 临时保存当前的分析结果，然后使用原有的显示逻辑
+            const originalResults = document.getElementById('results');
+            const isResultsVisible = originalResults.style.display !== 'none';
 
-            detailWindow.document.close();
-        }
+            // 显示结果并使用原有的 displayResults 函数
+            displayResults(result.analysis, result.supplementInfo);
 
-        // 生成详情页面的HTML
-        function generateDetailPageHTML(fileName, analysis, supplementInfo) {
-            return `
-                <!DOCTYPE html>
-                <html lang="zh-CN">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>SEO分析详情 - ${fileName}</title>
-                    <style>
-                        body {
-                            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-                            margin: 0;
-                            padding: 20px;
-                            background: #f9f9f9;
-                            line-height: 1.5;
-                            color: #202020;
-                        }
-                        .header {
-                            background: #644a40;
-                            color: white;
-                            padding: 20px;
-                            border-radius: 8px;
-                            margin-bottom: 20px;
-                        }
-                        .card {
-                            background: #fcfcfc;
-                            border: 1px solid #d8d8d8;
-                            border-radius: 8px;
-                            padding: 20px;
-                            margin-bottom: 20px;
-                        }
-                        .section-title {
-                            color: #644a40;
-                            font-size: 16px;
-                            font-weight: 600;
-                            margin-bottom: 12px;
-                        }
-                        .meta-grid {
-                            display: grid;
-                            grid-template-columns: 1fr 1fr;
-                            gap: 12px;
-                        }
-                        .meta-item {
-                            padding: 12px;
-                            background: #f8f8f8;
-                            border-radius: 6px;
-                            border-left: 3px solid #644a40;
-                        }
-                        .keyword-categories {
-                            display: grid;
-                            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                            gap: 20px;
-                        }
-                        .keyword-category {
-                            background: #f8f8f8;
-                            padding: 16px;
-                            border-radius: 8px;
-                        }
-                        .keyword-list {
-                            list-style: none;
-                            padding: 0;
-                            margin: 8px 0 0 0;
-                        }
-                        .keyword-item {
-                            padding: 6px 0;
-                            display: flex;
-                            justify-content: space-between;
-                            border-bottom: 1px solid #e8e8e8;
-                        }
-                        .serp-links {
-                            display: grid;
-                            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                            gap: 12px;
-                        }
-                        .serp-link {
-                            padding: 12px;
-                            background: #f8f8f8;
-                            border-radius: 6px;
-                            border-left: 3px solid #644a40;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>SEO分析详情</h1>
-                        <p style="margin: 8px 0 0 0; opacity: 0.9;">文件名: ${fileName}</p>
-                    </div>
+            // 如果原来结果区域是隐藏的，现在临时显示
+            if (!isResultsVisible) {
+                originalResults.style.display = 'block';
 
-                    ${generateBasicInfoSection(analysis, supplementInfo)}
-                    ${generateKeywordsSection(analysis)}
-                    ${generateSERPSection(supplementInfo)}
-                </body>
-                </html>
-            `;
-        }
-
-        // 生成基本信息部分
-        function generateBasicInfoSection(analysis, supplementInfo) {
-            let html = '<div class="card"><h2 class="section-title">页面信息</h2><div class="meta-grid">';
-
-            // 关键词指标
-            if (supplementInfo && supplementInfo.keywordInfo) {
-                const kw = supplementInfo.keywordInfo;
-                html += `
-                    <div class="meta-item"><strong>关键词:</strong> ${kw.keyword || '无'}</div>
-                    <div class="meta-item"><strong>URL:</strong> ${kw.url || '无'}</div>
-                    <div class="meta-item"><strong>获得流量:</strong> ${kw.traffic || '无'}</div>
-                    <div class="meta-item"><strong>搜索结果数量:</strong> ${kw.results || '无'}</div>
-                    <div class="meta-item"><strong>Intitle:</strong> ${kw.intitle || '无'}</div>
-                    <div class="meta-item"><strong>KD难度:</strong> ${kw.difficulty || '无'}</div>
-                    <div class="meta-item"><strong>KGR:</strong> ${calculateKGR(kw.intitle, kw.results)}</div>
-                `;
-            }
-
-            // 页面基本信息
-            html += `
-                <div class="meta-item"><strong>页面标题:</strong> ${analysis.title || '无'}</div>
-                <div class="meta-item"><strong>页面描述:</strong> ${analysis.description || '无'}</div>
-                <div class="meta-item"><strong>单词数:</strong> ${analysis.wordCount || 0}</div>
-            `;
-
-            // H标签
-            if (analysis.headings && analysis.headings.length > 0) {
-                const h1Tags = analysis.headings.filter(h => h.level === 1).map(h => h.text).join(', ');
-                const h2Tags = analysis.headings.filter(h => h.level === 2).map(h => h.text).join(', ');
-                html += `
-                    <div class="meta-item"><strong>H1标签:</strong> ${h1Tags || '无'}</div>
-                    <div class="meta-item"><strong>H2标签:</strong> ${h2Tags || '无'}</div>
-                `;
-            }
-
-            html += '</div></div>';
-            return html;
-        }
-
-        // 生成关键词部分
-        function generateKeywordsSection(analysis) {
-            if (!analysis.keywords) return '';
-
-            let html = '<div class="card"><h2 class="section-title">关键词密度</h2><div class="keyword-categories">';
-
-            const categories = [
-                { key: 'single', title: '1词组合' },
-                { key: 'double', title: '2词组合' },
-                { key: 'triple', title: '3词组合' },
-                { key: 'quadruple', title: '4词组合' }
-            ];
-
-            categories.forEach(category => {
-                const keywords = analysis.keywords[category.key] || [];
-                if (keywords.length > 0) {
-                    html += `
-                        <div class="keyword-category">
-                            <h3>${category.title}</h3>
-                            <ul class="keyword-list">
-                                ${keywords.map(k => `
-                                    <li class="keyword-item">
-                                        <span>${k.word}</span>
-                                        <span>${k.count}次</span>
-                                    </li>
-                                `).join('')}
-                            </ul>
-                        </div>
-                    `;
-                }
-            });
-
-            html += '</div></div>';
-            return html;
-        }
-
-        // 生成SERP部分
-        function generateSERPSection(supplementInfo) {
-            if (!supplementInfo || !supplementInfo.serpLinks || supplementInfo.serpLinks.length === 0) {
-                return '';
-            }
-
-            let html = '<div class="card"><h2 class="section-title">SERP竞争分析</h2><div class="serp-links">';
-
-            supplementInfo.serpLinks.forEach(link => {
-                html += `
-                    <div class="serp-link">
-                        <strong>${link.title}</strong>
-                        <br>
-                        <a href="${link.url}" target="_blank" style="color: #644a40; text-decoration: none; font-size: 13px;">${link.url}</a>
+                // 添加一个临时的返回按钮
+                const backButton = document.createElement('div');
+                backButton.id = 'tempBackButton';
+                backButton.innerHTML = `
+                    <div style="text-align: center; margin: 20px 0; padding: 16px; background: #f0f0f0; border-radius: 8px;">
+                        <p style="margin: 0 0 12px 0; color: #666; font-size: 14px;">正在查看: <strong>${result.fileName}</strong></p>
+                        <button onclick="closeTempDetailView()" style="background: #644a40; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;">返回文件列表</button>
                     </div>
                 `;
-            });
-
-            html += '</div></div>';
-            return html;
+                originalResults.insertBefore(backButton, originalResults.firstChild);
+            }
         }
+
+        // 关闭临时详情查看
+        function closeTempDetailView() {
+            const tempButton = document.getElementById('tempBackButton');
+            if (tempButton) {
+                tempButton.remove();
+            }
+
+            const originalResults = document.getElementById('results');
+            originalResults.style.display = 'none';
+        }
+
 
         // CORS代理服务列表
         const proxyUrls = [
