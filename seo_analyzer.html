@@ -968,10 +968,18 @@
                 }
 
                 // 检查是否是SERP链接开始
-                if (line.includes('SERP links') || (line.includes('URL') && line.includes('网站标题'))) {
+                if (line.includes('SERP links') || (line.includes('URL') && line.includes('网站标题')) ||
+                    (currentSection !== 'keyword' && !line.includes('\t') && !keywordHeaderFound &&
+                     (lines[i+1] && !lines[i+1].trim()) &&
+                     (lines[i+2] && (lines[i+2].includes('›') || lines[i+2].includes('http'))))) {
                     currentSection = 'serp';
                     serpLinksStarted = true;
                     console.log('Switched to SERP section');
+
+                    // 如果这行就是第一个Google格式条目的标题，不要跳过
+                    if (!line.includes('SERP links') && !line.includes('URL')) {
+                        i--; // 回退一行，因为当前行可能是第一个条目的标题
+                    }
                     continue;
                 }
 
@@ -1008,16 +1016,115 @@
                 }
 
                 // 解析SERP链接
-                if (currentSection === 'serp' && serpLinksStarted && line.includes('http')) {
-                    const parsed = parseSerpLine(line);
-                    if (parsed) {
-                        result.serpLinks.push(parsed);
+                if (currentSection === 'serp' && serpLinksStarted) {
+                    // 如果是空行，跳过
+                    if (!line) {
+                        continue;
+                    }
+
+                    // 检查接下来几行是否符合Google格式
+                    let isGoogleFormat = false;
+                    for (let j = i + 1; j <= i + 4 && j < lines.length; j++) {
+                        const nextLine = lines[j].trim();
+                        if (nextLine.includes('›')) {
+                            isGoogleFormat = true;
+                            break;
+                        }
+                    }
+
+                    if (isGoogleFormat) {
+                        // Google格式：解析从当前位置开始的所有数据
+                        const googleResults = parseGoogleFormat(lines, i);
+                        if (googleResults.length > 0) {
+                            result.serpLinks.push(...googleResults);
+                            console.log('Parsed Google format results:', googleResults);
+                        }
+                        break; // 已解析完所有Google格式数据
+                    } else if (line.includes('http')) {
+                        // 原有格式
+                        const parsed = parseSerpLine(line);
+                        if (parsed) {
+                            result.serpLinks.push(parsed);
+                        }
                     }
                 }
             }
 
             console.log('Final parsing result:', result);
             return result;
+        }
+
+        function parseGoogleFormat(lines, startIndex) {
+            // Google搜索结果格式解析
+            // 格式：
+            // 第1行: 标题
+            // 第2行: 空行（可选）
+            // 第3行: 网站名称
+            // 第4行: URL（用›分隔）
+            // 第5行: 描述
+
+            const results = [];
+            let i = startIndex;
+
+            while (i < lines.length) {
+                const line = lines[i].trim();
+
+                // 如果遇到空行或其他格式的分隔符，跳过
+                if (!line) {
+                    i++;
+                    continue;
+                }
+
+                // 尝试解析一个条目
+                let title = line;
+                let url = '';
+
+                // 查找下一个非空行作为可能的URL
+                let urlIndex = i + 1;
+                while (urlIndex < lines.length && !lines[urlIndex].trim()) {
+                    urlIndex++;
+                }
+
+                // 再找下一个非空行
+                if (urlIndex + 1 < lines.length) {
+                    urlIndex++;
+                    while (urlIndex < lines.length && !lines[urlIndex].trim()) {
+                        urlIndex++;
+                    }
+                }
+
+                // 检查是否找到URL行（包含›或http）
+                if (urlIndex < lines.length) {
+                    const potentialUrl = lines[urlIndex].trim();
+                    if (potentialUrl.includes('›') || potentialUrl.includes('http')) {
+                        // 处理包含›的URL
+                        if (potentialUrl.includes('›')) {
+                            url = potentialUrl.replace(/\s*›\s*/g, '/');
+                            // 移除多余的空格
+                            url = url.replace(/\s+/g, '');
+                            // 确保以http开头
+                            if (!url.startsWith('http')) {
+                                url = 'https://' + url;
+                            }
+                        } else {
+                            url = potentialUrl;
+                        }
+
+                        results.push({
+                            title: title,
+                            url: url
+                        });
+
+                        i = urlIndex + 1;
+                    } else {
+                        i++;
+                    }
+                } else {
+                    i++;
+                }
+            }
+
+            return results;
         }
 
         function parseSerpLine(line) {
