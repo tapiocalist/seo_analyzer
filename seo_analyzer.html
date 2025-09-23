@@ -280,12 +280,6 @@
             display: inline-block;
         }
 
-        .batch-section {
-            background: #efefef;
-            border-radius: 6px;
-            padding: 20px;
-            margin-top: 16px;
-        }
 
         .batch-textarea {
             width: 100%;
@@ -381,13 +375,18 @@
             .container {
                 padding: 20px 16px;
             }
-            
+
             .input-group {
                 flex-direction: column;
             }
-            
+
             .header h1 {
                 font-size: 2em;
+            }
+
+            .card > div[style*="grid-template-columns"] {
+                grid-template-columns: 1fr !important;
+                gap: 16px !important;
             }
         }
     </style>
@@ -396,42 +395,36 @@
     <div class="container">
         <div class="header">
             <h1>SEO页面分析工具</h1>
-            <p>分析网页SEO要素：Title、Description、H标签、关键词密度</p>
+            <p>分析HTML文件SEO要素：Title、Description、H标签、关键词密度</p>
         </div>
 
         <div class="card">
-            <div class="input-group">
-                <input type="url" id="urlInput" placeholder="输入网页URL，例如：https://www.example.com">
-                <button class="btn" onclick="analyzeURL()">
-                    <span id="analyzeText">分析网页</span>
-                </button>
-            </div>
-            
-            <div class="input-group">
-                <input type="file" id="fileInput" accept=".html,.htm">
-                <button class="btn" onclick="analyzeFile()">分析文件</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <!-- 批量下载区域 -->
+                <div>
+                    <h3 style="margin-bottom: 12px; color: #644a40;">批量下载HTML</h3>
+                    <textarea id="batchUrls" class="batch-textarea" placeholder="每行一个URL：&#10;https://www.example1.com&#10;https://www.example2.com" style="height: 112px; margin-bottom: 8px;"></textarea>
+                    <button class="btn" onclick="batchDownload()" id="batchBtn">批量下载</button>
+                </div>
+
+                <!-- 文件分析区域 -->
+                <div>
+                    <h3 style="margin-bottom: 12px; color: #644a40;">分析HTML文件</h3>
+                    <input type="file" id="fileInput" accept=".html,.htm" style="width: 100%; padding: 12px; border: 1px solid #d8d8d8; border-radius: 6px; font-size: 14px; background: #fcfcfc; color: #202020; margin-bottom: 8px;">
+                    <textarea id="supplementDataInput" class="batch-textarea" placeholder="可粘贴关键词信息和SERP链接数据，在分析HTML文件时一同处理..." style="height: 60px; margin-bottom: 8px;"></textarea>
+                    <button class="btn" onclick="analyzeFile()">分析网站</button>
+                </div>
             </div>
 
-            <div class="batch-section">
-                <h3 style="margin-bottom: 12px; color: #644a40;">批量下载HTML</h3>
-                <textarea id="batchUrls" class="batch-textarea" placeholder="每行一个URL：&#10;https://www.example1.com&#10;https://www.example2.com"></textarea>
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <button class="btn" onclick="batchDownload()" id="batchBtn">批量下载</button>
-                    <label style="font-size: 14px; color: #646464;">
-                        <input type="checkbox" id="autoAnalyze" checked> 下载后自动分析
-                    </label>
+            <div id="batchProgress" class="progress-section">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span id="progressText">准备下载...</span>
+                    <span id="progressCount">0/0</span>
                 </div>
-                
-                <div id="batchProgress" class="progress-section">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span id="progressText">准备下载...</span>
-                        <span id="progressCount">0/0</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div id="progressFill" class="progress-fill"></div>
-                    </div>
-                    <div id="progressDetails" class="progress-details"></div>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
                 </div>
+                <div id="progressDetails" class="progress-details"></div>
             </div>
         </div>
 
@@ -447,13 +440,9 @@
                 <div class="meta-grid" id="basicInfo"></div>
             </div>
 
-            <div class="card">
+            <div id="supplementCard" class="card" style="display: none;">
                 <h2 class="section-title">补充信息</h2>
-                <div style="margin-bottom: 16px;">
-                    <textarea id="supplementData" class="batch-textarea" placeholder="粘贴关键词信息和SERP链接数据...【&#10;&#10;关键词信息：&#10;Keyword    Position    Previous position    Search Volume    Keyword Difficulty    CPC    URL    Traffic    Traffic Cost    Competition    Number of Results    Trend    SERP Features by Keyword    Keyword Intents on Type&#10;two photos ai kissing free no prices    1    300    34    0    https://pollo.ai/video-effects/ai-kissing    322    0.78    0    0    73000000    elinks, Video, Video Carousel, Related searches    transactional    Organic&#10;&#10;SERP links&#10;URL&#10;网站标题&#10;https://funy.ai/ai-video/clipfly-ai-kissing-generator-free/    1    ClipFly AI Kissing Generator: Create Free Kiss Videos - Funy AI&#10;https://funy.ai/ai-kissing-video-free/    2    AI Kissing Video Generator Online - Free & No Sign Up】" style="height: 120px;"></textarea>
-                    <button class="btn" onclick="parseSupplementData()" style="margin-top: 8px;">解析数据</button>
-                </div>
-                <div id="supplementInfo" style="display: none;"></div>
+                <div id="supplementInfo"></div>
             </div>
 
             <div class="card">
@@ -471,14 +460,14 @@
     <script>
         async function analyzeFile() {
             const fileInput = document.getElementById('fileInput');
-            
+
             if (!fileInput.files || fileInput.files.length === 0) {
                 showError('请选择HTML文件');
                 return;
             }
 
             const file = fileInput.files[0];
-            
+
             if (!file.name.toLowerCase().endsWith('.html') && !file.name.toLowerCase().endsWith('.htm')) {
                 showError('请选择HTML文件');
                 return;
@@ -489,7 +478,19 @@
             try {
                 const html = await file.text();
                 const analysis = analyzePage(html, file.name);
-                displayResults(analysis);
+
+                // 检查是否有补充信息
+                const supplementData = document.getElementById('supplementDataInput').value.trim();
+                let supplementInfo = null;
+                if (supplementData) {
+                    try {
+                        supplementInfo = parseKeywordAndSerpData(supplementData);
+                    } catch (error) {
+                        console.warn('补充信息解析失败', error);
+                    }
+                }
+
+                displayResults(analysis, supplementInfo);
             } catch (error) {
                 showError('文件读取失败');
             } finally {
@@ -497,57 +498,7 @@
             }
         }
 
-        async function analyzeURL() {
-            const url = document.getElementById('urlInput').value.trim();
-            
-            if (!url) {
-                showError('请输入URL');
-                return;
-            }
 
-            try {
-                new URL(url);
-            } catch (e) {
-                showError('请输入有效的URL');
-                return;
-            }
-
-            showLoading(true);
-
-            try {
-                const response = await fetchPageContent(url);
-                const html = await response.text();
-                const analysis = analyzePage(html, url);
-                displayResults(analysis);
-            } catch (error) {
-                showError('无法访问该网页，请尝试其他URL或使用本地文件');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        async function fetchPageContent(url) {
-            const proxies = [
-                { url: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, type: 'allorigins' },
-                { url: `https://corsproxy.io/?${encodeURIComponent(url)}`, type: 'corsproxy' }
-            ];
-
-            for (const proxy of proxies) {
-                try {
-                    const response = await fetch(proxy.url);
-                    if (response.ok) {
-                        if (proxy.type === 'allorigins') {
-                            const data = await response.json();
-                            return new Response(data.contents);
-                        }
-                        return response;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-            throw new Error('无法获取页面内容');
-        }
 
         function analyzePage(html, url) {
             const parser = new DOMParser();
@@ -679,7 +630,7 @@
             return analysis;
         }
 
-        function displayResults(analysis) {
+        function displayResults(analysis, supplementInfo = null) {
             // 基础信息
             const basicInfoDiv = document.getElementById('basicInfo');
             basicInfoDiv.innerHTML = `
@@ -747,6 +698,16 @@
                 `;
             } else {
                 keywordsDiv.innerHTML = '<div class="no-data">未找到关键词数据</div>';
+            }
+
+            // 显示补充信息
+            const supplementCard = document.getElementById('supplementCard');
+            const supplementDiv = document.getElementById('supplementInfo');
+            if (supplementInfo) {
+                displaySupplementInfo(supplementInfo, supplementDiv);
+                supplementCard.style.display = 'block';
+            } else {
+                supplementCard.style.display = 'none';
             }
 
             document.getElementById('results').style.display = 'block';
@@ -843,12 +804,25 @@
                 
                 progressText.textContent = `下载完成！成功: ${successful}个`;
                 
-                if (autoAnalyze && results.length > 0) {
+                // 批量下载后自动分析第一个成功的文件
+                if (results.length > 0) {
                     const successResult = results.find(r => r.status === 'success');
                     if (successResult) {
                         setTimeout(() => {
                             const analysis = analyzePage(successResult.html, successResult.url);
-                            displayResults(analysis);
+
+                            // 检查是否有补充信息
+                            const supplementData = document.getElementById('supplementDataInput').value.trim();
+                            let supplementInfo = null;
+                            if (supplementData) {
+                                try {
+                                    supplementInfo = parseKeywordAndSerpData(supplementData);
+                                } catch (error) {
+                                    console.warn('补充信息解析失败', error);
+                                }
+                            }
+
+                            displayResults(analysis, supplementInfo);
                         }, 1000);
                     }
                 }
@@ -875,7 +849,6 @@
 
         function showLoading(show) {
             document.querySelector('.loading').style.display = show ? 'block' : 'none';
-            document.getElementById('analyzeText').textContent = show ? '分析中...' : '分析网页';
         }
 
         function showError(message) {
@@ -1068,12 +1041,6 @@
             supplementDiv.innerHTML = html;
         }
 
-        // 回车键支持
-        document.getElementById('urlInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                analyzeURL();
-            }
-        });
     </script>
 </body>
 </html>
