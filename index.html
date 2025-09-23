@@ -422,6 +422,7 @@
         <div class="card">
             <h3 style="margin-bottom: 12px; color: #644a40;">分析HTML文件</h3>
             <input type="file" id="fileInput" accept=".html,.htm" multiple style="width: 100%; padding: 12px; border: 1px solid #d8d8d8; border-radius: 6px; font-size: 14px; background: #fcfcfc; color: #202020; margin-bottom: 8px;">
+            <div style="font-size: 13px; color: #666; margin-bottom: 8px;">💡 支持多次选择文件，新选择的文件会添加到列表中（重复文件会自动跳过）</div>
 
             <!-- 文件列表显示区域 -->
             <div id="fileList" style="margin-bottom: 12px;"></div>
@@ -1898,8 +1899,22 @@
 
         // 处理文件选择
         function handleFileSelection(event) {
-            const files = Array.from(event.target.files);
-            uploadedFiles = files;
+            const newFiles = Array.from(event.target.files);
+
+            // 检查重复文件名，避免添加相同的文件
+            newFiles.forEach(newFile => {
+                const isDuplicate = uploadedFiles.some(existingFile =>
+                    existingFile.name === newFile.name && existingFile.size === newFile.size
+                );
+
+                if (!isDuplicate) {
+                    uploadedFiles.push(newFile);
+                }
+            });
+
+            // 清空文件输入框，允许重新选择相同文件
+            event.target.value = '';
+
             displayFileList();
         }
 
@@ -1921,13 +1936,30 @@
 
             fileListDiv.innerHTML = uploadedFiles.map((file, index) => `
                 <div class="file-item" style="border: 1px solid #d8d8d8; border-radius: 6px; padding: 12px; margin-bottom: 8px; background: #fcfcfc;">
-                    <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <strong style="color: #644a40; font-size: 14px;">${file.name}</strong>
-                        <button class="btn" onclick="viewFileDetails(${index})" id="detailBtn-${index}" style="background: #ccc; font-size: 12px; padding: 4px 8px; margin-left: auto;" disabled>查看详情</button>
+                        <div style="display: flex; gap: 4px;">
+                            <button class="btn" onclick="removeFile(${index})" style="background: #dc3545; font-size: 12px; padding: 4px 8px;">移除</button>
+                            <button class="btn" onclick="viewFileDetails(${index})" id="detailBtn-${index}" style="background: #ccc; font-size: 12px; padding: 4px 8px;" disabled>查看详情</button>
+                        </div>
                     </div>
                     <textarea class="supplement-input" data-file-index="${index}" placeholder="为此文件输入补充信息（关键词信息和SERP链接数据）..." style="width: 100%; height: 60px; padding: 8px; border: 1px solid #d8d8d8; border-radius: 4px; font-size: 13px; resize: vertical;"></textarea>
                 </div>
             `).join('');
+        }
+
+        // 移除指定文件
+        function removeFile(index) {
+            if (index >= 0 && index < uploadedFiles.length) {
+                uploadedFiles.splice(index, 1);
+
+                // 如果有分析结果，也要移除对应的结果
+                if (allAnalysisResults.length > index) {
+                    allAnalysisResults.splice(index, 1);
+                }
+
+                displayFileList();
+            }
         }
 
         // 存储所有分析结果
