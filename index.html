@@ -1752,8 +1752,9 @@
                     excelData.push(['标签类型', '标题内容', '']);
 
                     analysis.headings.forEach(heading => {
-                        const tagDisplay = heading.tag.toUpperCase(); // 显示为H1, H2等
-                        excelData.push([tagDisplay, heading.text, '']);
+                        const tagDisplay = heading.tag ? heading.tag.toUpperCase() : 'H'; // 显示为H1, H2等
+                        const headingText = heading.text || heading.content || '';
+                        excelData.push([tagDisplay, headingText, '']);
                     });
                     excelData.push(['', '', '']);
                 }
@@ -1771,15 +1772,20 @@
                 // 转换为制表符分隔的格式
                 const tsvContent = excelData.map(row => row.join('\t')).join('\n');
 
-                // 复制到剪贴板
-                if (navigator.clipboard && window.isSecureContext) {
-                    navigator.clipboard.writeText(tsvContent).then(() => {
-                        showCopySuccessNotification();
-                    }).catch(err => {
-                        console.error('复制失败:', err);
+                // 复制到剪贴板 - 优先使用更可靠的方法
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(tsvContent).then(() => {
+                            showCopySuccessNotification();
+                        }).catch(err => {
+                            console.warn('Clipboard API失败，使用fallback:', err);
+                            fallbackCopyToClipboard(tsvContent);
+                        });
+                    } else {
                         fallbackCopyToClipboard(tsvContent);
-                    });
-                } else {
+                    }
+                } catch (error) {
+                    console.error('复制过程出错:', error);
                     fallbackCopyToClipboard(tsvContent);
                 }
 
@@ -1807,25 +1813,62 @@
         }
 
         function fallbackCopyToClipboard(text) {
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.top = '0';
-            textArea.style.left = '0';
-            textArea.style.opacity = '0';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-
             try {
-                document.execCommand('copy');
-                showCopySuccessNotification();
-            } catch (err) {
-                console.error('复制失败:', err);
-                alert('复制失败，请手动选择复制');
-            }
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.top = '-1000px';
+                textArea.style.left = '-1000px';
+                textArea.style.width = '1px';
+                textArea.style.height = '1px';
+                textArea.style.opacity = '0';
+                textArea.style.border = 'none';
+                textArea.style.outline = 'none';
+                textArea.style.boxShadow = 'none';
+                textArea.style.background = 'transparent';
 
-            document.body.removeChild(textArea);
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                textArea.setSelectionRange(0, 99999); // 对移动设备更好的支持
+
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                if (successful) {
+                    showCopySuccessNotification();
+                } else {
+                    // 显示一个模态框让用户手动复制
+                    showManualCopyDialog(text);
+                }
+            } catch (err) {
+                console.error('Fallback复制失败:', err);
+                showManualCopyDialog(text);
+            }
+        }
+
+        function showManualCopyDialog(text) {
+            const modal = document.createElement('div');
+            modal.innerHTML = `
+                <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
+                    <div style="background: white; padding: 20px; border-radius: 8px; max-width: 500px; max-height: 400px; overflow: auto;">
+                        <h3 style="margin-top: 0;">手动复制数据</h3>
+                        <p>请手动选择下面的文本并复制（Ctrl+C）：</p>
+                        <textarea readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 12px; border: 1px solid #ccc; padding: 8px;">${text}</textarea>
+                        <div style="text-align: right; margin-top: 10px;">
+                            <button onclick="this.closest('div').parentElement.remove()" style="padding: 8px 16px; background: #644a40; color: white; border: none; border-radius: 4px; cursor: pointer;">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // 自动选择文本
+            const textarea = modal.querySelector('textarea');
+            setTimeout(() => {
+                textarea.focus();
+                textarea.select();
+            }, 100);
         }
 
         function showCopySuccessNotification() {
