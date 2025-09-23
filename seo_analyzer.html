@@ -142,6 +142,7 @@
         .meta-value {
             color: #202020;
             word-break: break-word;
+            font-size: 14px;
         }
 
         .status {
@@ -205,12 +206,12 @@
 
         .heading-item.h1 {
             margin-left: 0;
-            font-weight: 600;
+            font-weight: normal;
         }
 
         .heading-item.h2 {
             margin-left: 24px;
-            font-weight: 500;
+            font-weight: normal;
         }
 
         .heading-level {
@@ -227,6 +228,8 @@
         .heading-text {
             color: #202020;
             line-height: 1.4;
+            font-size: 14px;
+            font-weight: normal;
         }
 
         .keyword-categories {
@@ -443,27 +446,34 @@
             <div class="card">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                     <div>
-                        <h2 class="section-title">页面信息</h2>
                         <div class="meta-grid" id="basicInfo"></div>
-                    </div>
-                    <div>
-                        <h2 class="section-title">标题结构 (H1-H2)</h2>
-                        <div id="headingsInfo"></div>
 
                         <!-- 关键词指标区域 -->
                         <div id="keywordMetrics" style="margin-top: 20px;"></div>
                     </div>
+                    <div>
+                        <!-- 页面基本信息放在标题结构上面 -->
+                        <div id="titleDescriptionInfo" style="margin-bottom: 20px;"></div>
+
+                        <div id="headingsInfo"></div>
+                    </div>
                 </div>
             </div>
 
-            <div id="supplementCard" class="card" style="display: none;">
-                <h2 class="section-title">SERP竞争分析</h2>
-                <div id="supplementInfo"></div>
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h2 class="section-title" style="margin-bottom: 0;">关键词密度</h2>
+                    <div style="color: #646464; font-size: 14px;">单词数：<span style="font-weight: 600; color: #644a40;" id="wordCountDisplay">0</span></div>
+                </div>
+                <div class="keyword-categories" id="keywordsInfo"></div>
             </div>
 
-            <div class="card">
-                <h2 class="section-title">关键词密度</h2>
-                <div class="keyword-categories" id="keywordsInfo"></div>
+            <div id="supplementCard" class="card" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h2 class="section-title" style="margin-bottom: 0;">SERP竞争分析</h2>
+                    <button class="btn" onclick="copyAllUrls()" style="background: #666; font-size: 12px; padding: 6px 12px;">复制所有网址</button>
+                </div>
+                <div id="supplementInfo"></div>
             </div>
         </div>
     </div>
@@ -644,32 +654,32 @@
         function displayResults(analysis, supplementInfo = null) {
             // 基础信息和关键词信息
             const basicInfoDiv = document.getElementById('basicInfo');
-            let basicInfoHTML = `
-                <div class="meta-item">
-                    <div class="meta-label">页面标题${getStatusBadge(analysis.title, 'title')}</div>
-                    <div class="meta-value">${analysis.title || '未找到'}</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">页面描述${getStatusBadge(analysis.description, 'description')}</div>
-                    <div class="meta-value">${analysis.description || '未找到'}</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">单词数</div>
-                    <div class="meta-value">${analysis.wordCount}</div>
-                </div>
-            `;
+            let basicInfoHTML = '';
 
-            // 如果有关键词信息，添加到页面信息中
+            // 如果有关键词信息，先显示关键词和URL
             if (supplementInfo && supplementInfo.keywordInfo) {
                 const kw = supplementInfo.keywordInfo;
                 basicInfoHTML += `
                     <div class="meta-item">
-                        <div class="meta-label">关键词（Keyword）</div>
-                        <div class="meta-value">${kw.keyword}</div>
+                        <div class="meta-label">关键词：<span style="font-weight: normal; color: #202020; margin-left: 8px;">${kw.keyword}</span></div>
                     </div>
                     <div class="meta-item">
-                        <div class="meta-label">关键词页面关联（URL）</div>
-                        <div class="meta-value"><a href="${kw.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all; font-size: 12px;">${kw.url}</a></div>
+                        <div class="meta-label">URL：<span style="font-weight: normal; margin-left: 8px;"><a href="${kw.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all; font-size: 12px;">${kw.url}</a></span></div>
+                    </div>
+                `;
+
+                // 只在搜索量不为0时显示
+                if (kw.searchVolume && parseInt(kw.searchVolume) > 0) {
+                    basicInfoHTML += `
+                        <div class="meta-item">
+                            <div class="meta-label">搜索量：<span style="font-weight: normal; color: #202020; margin-left: 8px;">${parseInt(kw.searchVolume).toLocaleString()}</span></div>
+                        </div>
+                    `;
+                }
+
+                basicInfoHTML += `
+                    <div class="meta-item">
+                        <div class="meta-label">获得流量：<span style="font-weight: normal; color: #202020; margin-left: 8px;">${kw.traffic}</span></div>
                     </div>
                 `;
             }
@@ -728,6 +738,19 @@
                 keywordsDiv.innerHTML = '<div class="no-data">未找到关键词数据</div>';
             }
 
+            // 显示页面标题和描述
+            const titleDescDiv = document.getElementById('titleDescriptionInfo');
+            titleDescDiv.innerHTML = `
+                <div class="meta-item" style="margin-bottom: 8px;">
+                    <div class="meta-label">页面标题${getStatusBadge(analysis.title, 'title')}</div>
+                    <div class="meta-value">${analysis.title || '未找到'}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-label">页面描述${getStatusBadge(analysis.description, 'description')}</div>
+                    <div class="meta-value">${analysis.description || '未找到'}</div>
+                </div>
+            `;
+
             // 显示关键词指标
             const keywordMetricsDiv = document.getElementById('keywordMetrics');
             if (supplementInfo && supplementInfo.keywordInfo) {
@@ -744,6 +767,12 @@
                 supplementCard.style.display = 'block';
             } else {
                 supplementCard.style.display = 'none';
+            }
+
+            // 更新单词数显示
+            const wordCountDisplay = document.getElementById('wordCountDisplay');
+            if (wordCountDisplay) {
+                wordCountDisplay.textContent = analysis.wordCount;
             }
 
             document.getElementById('results').style.display = 'block';
@@ -1058,7 +1087,7 @@
                 <h3 style="color: #644a40; margin-bottom: 8px; font-size: 1em;">关键词指标</h3>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px;">
                     <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
-                        <div style="font-size: 12px; color: #666;">结果数</div>
+                        <div style="font-size: 12px; color: #666;">搜索结果数量</div>
                         <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kw.results ? parseInt(kw.results).toLocaleString() : '0'}</div>
                     </div>
                     <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
@@ -1070,13 +1099,8 @@
                         <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kw.difficulty}</div>
                     </div>
                     <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
-                        <div style="font-size: 12px; color: #666;">流量</div>
-                        <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kw.traffic}</div>
-                    </div>
-                    <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; text-align: center;">
                         <div style="font-size: 12px; color: #666;">KGR</div>
                         <div style="font-weight: 600; color: #644a40; font-size: 14px;">${kgr}</div>
-                        <div style="font-size: 10px; margin-top: 2px;">${kgrStatus}</div>
                     </div>
                 </div>
             `;
@@ -1086,38 +1110,38 @@
             const supplementDiv = document.getElementById('supplementInfo');
             let html = '';
 
+            // 保存SERP链接数据到全局变量
+            globalSerpLinks = data.serpLinks || [];
 
-            // SERP链接表格
+
+            // SERP链接表格（无标题）
             if (data.serpLinks.length > 0) {
                 html += `
-                    <div>
-                        <h3 style="color: #644a40; margin-bottom: 12px; font-size: 1.1em;">SERP链接</h3>
-                        <div style="overflow-x: auto;">
-                            <table style="width: 100%; border-collapse: collapse; background: #fcfcfc; border: 1px solid #d8d8d8; border-radius: 6px;">
-                                <thead>
-                                    <tr style="background: #efefef;">
-                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600;">#</th>
-                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600;">标题</th>
-                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600;">网址</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; background: #fcfcfc; border: 1px solid #d8d8d8; border-radius: 6px;">
+                            <thead>
+                                <tr style="background: #efefef;">
+                                    <th style="padding: 8px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600; font-size: 14px;">#</th>
+                                    <th style="padding: 8px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600; font-size: 14px;">标题</th>
+                                    <th style="padding: 8px; text-align: left; border-bottom: 1px solid #d8d8d8; color: #644a40; font-weight: 600; font-size: 14px;">网址</th>
+                                </tr>
+                            </thead>
+                            <tbody>
                 `;
 
                 data.serpLinks.forEach((link, index) => {
                     html += `
                         <tr style="border-bottom: 1px solid #e8e8e8;">
-                            <td style="padding: 12px; font-weight: 600; color: #644a40;">${index + 1}</td>
-                            <td style="padding: 12px; color: #202020; line-height: 1.4;">${link.title}</td>
-                            <td style="padding: 12px;"><a href="${link.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all;">${link.url}</a></td>
+                            <td style="padding: 8px; font-weight: 600; color: #644a40; font-size: 14px; line-height: 1.3;">${index + 1}</td>
+                            <td style="padding: 8px; color: #202020; line-height: 1.3; font-size: 14px;">${link.title}</td>
+                            <td style="padding: 8px; font-size: 14px; line-height: 1.3;"><a href="${link.url}" target="_blank" style="color: #644a40; text-decoration: underline; word-break: break-all;">${link.url}</a></td>
                         </tr>
                     `;
                 });
 
                 html += `
-                                </tbody>
-                            </table>
-                        </div>
+                            </tbody>
+                        </table>
                     </div>
                 `;
             }
@@ -1141,6 +1165,47 @@
                 console.error('解析失败:', error);
                 alert('解析失败，请查看控制台获取详细信息');
             }
+        }
+
+        // 全局变量存储SERP链接数据
+        let globalSerpLinks = [];
+
+        function copyAllUrls() {
+            if (globalSerpLinks.length === 0) {
+                return;
+            }
+
+            const urls = globalSerpLinks.map(link => link.url).join('\n');
+
+            // 使用Clipboard API复制到剪贴板
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(urls).catch(err => {
+                    console.error('复制失败:', err);
+                    fallbackCopyTextToClipboard(urls);
+                });
+            } else {
+                // 备用方案
+                fallbackCopyTextToClipboard(urls);
+            }
+        }
+
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.top = '0';
+            textArea.style.left = '0';
+            textArea.style.position = 'fixed';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('复制失败:', err);
+            }
+
+            document.body.removeChild(textArea);
         }
 
     </script>
