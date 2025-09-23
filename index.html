@@ -1698,76 +1698,65 @@
                 const analysis = savedData.analysisResults.analysis;
                 const supplementInfo = savedData.analysisResults.supplementInfo;
 
-                let excelData = [];
+                // 创建单行格式的Excel数据
+                const headers = [
+                    '关键词', 'URL', '获得流量', '搜索结果数量', 'Intitle', 'KD难度', 'KGR',
+                    '页面标题', '页面描述', 'H1', 'H2', '单词数',
+                    '1词', '2词', '3词', '4词',
+                    'SERP竞争分析标题', 'SERP竞争分析网址'
+                ];
 
-                // 基本信息
-                excelData.push(['分析项目', '内容', '状态/数值']);
+                const dataRow = [];
 
-                // 只添加有内容的基本信息
-                if (analysis.basicInfo?.title) {
-                    excelData.push(['网站标题', analysis.basicInfo.title, getStatusText(analysis.basicInfo.titleStatus)]);
-                }
-                if (analysis.basicInfo?.description) {
-                    excelData.push(['网站描述', analysis.basicInfo.description, getStatusText(analysis.basicInfo.descStatus)]);
-                }
-                if (analysis.basicInfo?.url) {
-                    excelData.push(['网站URL', analysis.basicInfo.url, '']);
-                }
-
-                // 字符数和单词数合并到一行
-                const charCount = analysis.basicInfo?.charCount || '0';
-                const wordCount = analysis.basicInfo?.wordCount || '0';
-                excelData.push(['字符数 | 单词数', `${charCount} | ${wordCount}`, '']);
-
-                // 空行分隔
-                excelData.push(['', '', '']);
-
-                // 关键词指标（如果有补充信息）
+                // 关键词指标
                 if (supplementInfo && supplementInfo.keywordInfo) {
                     const kw = supplementInfo.keywordInfo;
-                    excelData.push(['关键词指标', '', '']);
-                    excelData.push(['关键词', kw.keyword || '', '']);
-                    excelData.push(['排名位置', kw.position || '', '']);
-                    excelData.push(['搜索结果数量', kw.results || '', '']);
-                    excelData.push(['Intitle数量', kw.intitle || '', '']);
-                    excelData.push(['KGR', calculateKGR(kw.intitle, kw.results), '']);
-                    excelData.push(['获得流量', kw.traffic || '', '']);
-                    excelData.push(['', '', '']);
+                    dataRow.push(kw.keyword || ''); // 关键词
+                    dataRow.push(kw.url || ''); // URL
+                    dataRow.push(kw.traffic || ''); // 获得流量
+                    dataRow.push(kw.results || ''); // 搜索结果数量
+                    dataRow.push(kw.intitle || ''); // Intitle
+                    dataRow.push(kw.difficulty || ''); // KD难度
+                    dataRow.push(calculateKGR(kw.intitle, kw.results)); // KGR
+                } else {
+                    dataRow.push('', '', '', '', '', '', ''); // 空的关键词指标
                 }
 
-                // 关键词密度
-                if (analysis.keywords && analysis.keywords.length > 0) {
-                    excelData.push(['关键词密度', '', '']);
-                    excelData.push(['关键词', '出现次数', '密度%']);
+                // 页面信息
+                dataRow.push(analysis.title || ''); // 页面标题
+                dataRow.push(analysis.description || ''); // 页面描述
 
-                    analysis.keywords.forEach(keyword => {
-                        excelData.push([keyword.word, keyword.count.toString(), keyword.density]);
-                    });
-                    excelData.push(['', '', '']);
-                }
+                // H标签
+                const h1Tags = analysis.headings?.filter(h => h.tag === 'h1').map(h => h.text || h.content || '').join('\n') || '';
+                const h2Tags = analysis.headings?.filter(h => h.tag === 'h2').map(h => h.text || h.content || '').join('\n') || '';
+                dataRow.push(h1Tags); // H1
+                dataRow.push(h2Tags); // H2
 
-                // H标签结构
-                if (analysis.headings && analysis.headings.length > 0) {
-                    excelData.push(['标题结构', '', '']);
-                    excelData.push(['标签类型', '标题内容', '']);
+                // 单词数
+                dataRow.push(analysis.wordCount || '0'); // 单词数
 
-                    analysis.headings.forEach(heading => {
-                        const tagDisplay = heading.tag ? heading.tag.toUpperCase() : 'H'; // 显示为H1, H2等
-                        const headingText = heading.text || heading.content || '';
-                        excelData.push([tagDisplay, headingText, '']);
-                    });
-                    excelData.push(['', '', '']);
-                }
+                // 关键词密度（按词数分组）
+                const keywords1 = analysis.keywords?.single?.map(k => `${k.word}(${k.count})`).join('\n') || '';
+                const keywords2 = analysis.keywords?.double?.map(k => `${k.word}(${k.count})`).join('\n') || '';
+                const keywords3 = analysis.keywords?.triple?.map(k => `${k.word}(${k.count})`).join('\n') || '';
+                const keywords4 = analysis.keywords?.quadruple?.map(k => `${k.word}(${k.count})`).join('\n') || '';
 
-                // SERP竞争链接（如果有）
+                dataRow.push(keywords1); // 1词
+                dataRow.push(keywords2); // 2词
+                dataRow.push(keywords3); // 3词
+                dataRow.push(keywords4); // 4词
+
+                // SERP竞争分析
                 if (supplementInfo && supplementInfo.serpLinks && supplementInfo.serpLinks.length > 0) {
-                    excelData.push(['SERP竞争分析', '', '']);
-                    excelData.push(['序号', '标题', 'URL']);
-
-                    supplementInfo.serpLinks.forEach((link, index) => {
-                        excelData.push([(index + 1).toString(), link.title, link.url]);
-                    });
+                    const serpTitles = supplementInfo.serpLinks.map(link => link.title).join('\n');
+                    const serpUrls = supplementInfo.serpLinks.map(link => link.url).join('\n');
+                    dataRow.push(serpTitles); // SERP竞争分析标题
+                    dataRow.push(serpUrls); // SERP竞争分析网址
+                } else {
+                    dataRow.push('', ''); // 空的SERP数据
                 }
+
+                const excelData = [headers, dataRow];
 
                 // 转换为制表符分隔的格式
                 const tsvContent = excelData.map(row => row.join('\t')).join('\n');
