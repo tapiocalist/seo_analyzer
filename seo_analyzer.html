@@ -402,6 +402,15 @@
             <p>分析HTML文件SEO要素：Title、Description、H标签、关键词密度</p>
         </div>
 
+        <!-- 最近分析记录 -->
+        <div id="recentHistory" class="card" style="display: none; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="color: #644a40; margin: 0;">最近分析记录</h3>
+                <button class="btn" onclick="clearHistory()" style="background: #dc3545; font-size: 11px; padding: 4px 8px;">清空历史</button>
+            </div>
+            <div id="historyList" style="max-height: 120px; overflow-y: auto;"></div>
+        </div>
+
         <div class="card">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                 <!-- 批量下载区域 -->
@@ -418,7 +427,6 @@
                     <textarea id="supplementDataInput" class="batch-textarea" placeholder="可粘贴关键词信息和SERP链接数据，在分析HTML文件时一同处理..." style="height: 60px; margin-bottom: 8px;" oninput="saveSupplementDataOnInput()"></textarea>
                     <div style="display: flex; gap: 8px;">
                         <button class="btn" onclick="analyzeFile()">分析网站</button>
-                        <button class="btn" onclick="testParseData()" style="background: #666; font-size: 12px; padding: 8px 12px;">测试解析</button>
                         <button class="btn" onclick="clearCacheData()" style="background: #dc3545; font-size: 12px; padding: 8px 12px;">清除缓存</button>
                     </div>
                 </div>
@@ -533,6 +541,15 @@
                     analysis: analysis,
                     supplementInfo: supplementInfo
                 });
+
+                // 保存到历史记录
+                const url = analysis.basicInfo?.url || '';
+                const title = analysis.basicInfo?.title || file.name;
+                const supplementText = document.getElementById('supplementDataInput').value.trim();
+                saveToHistory(file.name, url, title, {
+                    analysis: analysis,
+                    supplementInfo: supplementInfo
+                }, supplementText);
 
                 displayResults(analysis, supplementInfo);
             } catch (error) {
@@ -1299,7 +1316,9 @@
 
         // 数据持久化相关函数
         const STORAGE_KEY = 'seo_analyzer_data';
+        const HISTORY_KEY = 'seo_analyzer_history';
         const STORAGE_EXPIRY_DAYS = 7;
+        const MAX_HISTORY_RECORDS = 10;
 
         function saveToStorage(data) {
             try {
@@ -1329,7 +1348,6 @@
                     return null;
                 }
 
-                console.log('从localStorage恢复数据');
                 return data;
             } catch (error) {
                 console.warn('从localStorage读取失败:', error);
@@ -1396,10 +1414,14 @@
         }
 
         // 页面加载时恢复数据
+        let dataRestored = false;
         function restoreDataOnLoad() {
+            if (dataRestored) return; // 防止重复恢复
+
             const savedData = loadFromStorage();
             if (!savedData) return;
 
+            console.log('恢复localStorage数据');
             let hasRestored = false;
 
             // 恢复上传的文件信息和分析结果
@@ -1427,6 +1449,8 @@
             if (hasRestored) {
                 showRestoreNotification();
             }
+
+            dataRestored = true; // 标记已恢复
         }
 
         function createFileStatusIndicator(fileName) {
@@ -1466,11 +1490,11 @@
             document.getElementById('results').style.display = 'none';
         }
 
-        function showRestoreNotification() {
+        function showRestoreNotification(message = '已恢复之前的数据') {
             const notification = document.createElement('div');
             notification.innerHTML = `
                 <div style="position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 12px 16px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; font-size: 14px;">
-                    ✓ 已恢复之前的数据
+                    ✓ ${message}
                     <button onclick="this.parentElement.remove()" style="background: none; border: none; color: white; margin-left: 10px; cursor: pointer; font-size: 16px;">×</button>
                 </div>
             `;
@@ -1486,23 +1510,21 @@
 
         // 清除缓存数据
         function clearCacheData() {
-            if (confirm('确定要清除所有保存的数据吗？这将删除已上传的文件和补充信息。')) {
-                clearStorage();
+            clearStorage();
 
-                // 清除界面
-                document.getElementById('fileInput').value = '';
-                document.getElementById('supplementDataInput').value = '';
-                document.getElementById('results').style.display = 'none';
+            // 清除界面
+            document.getElementById('fileInput').value = '';
+            document.getElementById('supplementDataInput').value = '';
+            document.getElementById('results').style.display = 'none';
 
-                // 清除文件恢复状态指示器
-                const statusDiv = document.getElementById('fileRestoreStatus');
-                if (statusDiv) {
-                    statusDiv.remove();
-                }
-
-                // 显示清除成功提示
-                showClearNotification();
+            // 清除文件恢复状态指示器
+            const statusDiv = document.getElementById('fileRestoreStatus');
+            if (statusDiv) {
+                statusDiv.remove();
             }
+
+            // 显示清除成功提示
+            showClearNotification();
         }
 
         function showClearNotification() {
@@ -1523,9 +1545,147 @@
             }, 3000);
         }
 
+        // 历史记录管理
+        function saveToHistory(fileName, url, title, analysisData, supplementData, timestamp = Date.now()) {
+            try {
+                let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+
+                // 提取网站名称（域名）
+                let siteName = fileName.replace(/\.(html?|htm)$/i, '');
+                if (url && url.startsWith('http')) {
+                    try {
+                        const urlObj = new URL(url);
+                        siteName = urlObj.hostname;
+                    } catch (e) {
+                        console.warn('URL解析失败:', url);
+                    }
+                }
+
+                console.log('保存历史记录 - 文件名:', fileName, '网站名:', siteName);
+
+                const record = {
+                    id: timestamp,
+                    fileName: fileName,
+                    siteName: siteName,
+                    title: title || siteName,
+                    url: url,
+                    timestamp: timestamp,
+                    // 保存完整的分析数据
+                    analysisData: analysisData,
+                    supplementData: supplementData
+                };
+
+                // 避免重复记录（相同网站名称）
+                history = history.filter(item => item.siteName !== siteName);
+
+                // 添加到开头
+                history.unshift(record);
+
+                // 限制记录数量
+                history = history.slice(0, MAX_HISTORY_RECORDS);
+
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+                console.log('历史记录已保存:', siteName);
+
+                displayHistory();
+            } catch (error) {
+                console.warn('保存历史记录失败:', error);
+            }
+        }
+
+        function loadHistory() {
+            try {
+                return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+            } catch (error) {
+                console.warn('读取历史记录失败:', error);
+                return [];
+            }
+        }
+
+        function displayHistory() {
+            const history = loadHistory();
+            const historyCard = document.getElementById('recentHistory');
+            const historyList = document.getElementById('historyList');
+
+            if (history.length === 0) {
+                historyCard.style.display = 'none';
+                return;
+            }
+
+            historyCard.style.display = 'block';
+
+            historyList.innerHTML = history.map((record, index) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-radius: 4px; background: ${index % 2 === 0 ? '#f8f8f8' : '#fff'}; margin-bottom: 2px; cursor: pointer;" onclick="loadHistoryRecord('${record.id}')">
+                    <div>
+                        <div style="font-weight: 600; color: #644a40; font-size: 13px;">${record.siteName}</div>
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">${new Date(record.timestamp).toLocaleString()}</div>
+                    </div>
+                    <button onclick="event.stopPropagation(); removeHistoryRecord('${record.id}')" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 12px; padding: 2px 4px;">×</button>
+                </div>
+            `).join('');
+        }
+
+        function loadHistoryRecord(recordId) {
+            const history = loadHistory();
+            const record = history.find(item => item.id.toString() === recordId.toString());
+
+            if (record && record.analysisData) {
+                console.log('从历史记录恢复数据:', record.siteName);
+
+                // 创建文件状态指示器
+                createFileStatusIndicator(record.fileName);
+
+                // 恢复补充信息（如果有）
+                if (record.supplementData) {
+                    const supplementInput = document.getElementById('supplementDataInput');
+                    if (supplementInput) {
+                        supplementInput.value = record.supplementData;
+                    }
+                }
+
+                // 直接显示分析结果
+                displayResults(record.analysisData.analysis, record.analysisData.supplementInfo);
+
+                // 显示恢复提示
+                showRestoreNotification(`已从历史记录恢复：${record.siteName}`);
+            } else {
+                alert(`历史记录数据不完整，无法恢复分析结果。`);
+            }
+        }
+
+        function removeHistoryRecord(recordId) {
+            let history = loadHistory();
+            history = history.filter(item => item.id.toString() !== recordId.toString());
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+            displayHistory();
+        }
+
+        function clearHistory() {
+            localStorage.removeItem(HISTORY_KEY);
+            displayHistory();
+
+            // 显示清除提示
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+                <div style="position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 16px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; font-size: 14px;">
+                    🗑️ 历史记录已清空
+                    <button onclick="this.parentElement.remove()" style="background: none; border: none; color: white; margin-left: 10px; cursor: pointer; font-size: 16px;">×</button>
+                </div>
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 3000);
+        }
+
         // 页面加载完成后执行恢复
         window.addEventListener('DOMContentLoaded', function() {
-            setTimeout(restoreDataOnLoad, 100);
+            setTimeout(() => {
+                restoreDataOnLoad();
+                displayHistory();
+            }, 100);
         });
 
         // CORS代理服务列表
