@@ -225,3 +225,22 @@ Supports modern browsers (Chrome, Firefox, Safari, Edge) with ES6+ features:
 - Large files (>5MB) may take longer to process
 - Batch analysis processes files sequentially
 - localStorage has browser-dependent size limits (~5-10MB)
+
+## Development Guidelines & Token Usage
+
+### Token Usage Warning
+**IMPORTANT**: When implementing features that require large amounts of code generation (>1000 lines of code), always warn the user about token consumption before proceeding. Many users have limited token budgets.
+
+**Guidelines**:
+1. Before generating large code blocks, warn: "This will generate substantial code (~X lines). This will use significant tokens. Should I proceed?"
+2. For complex features, offer to break implementation into smaller phases
+3. Always prefer editing existing code over creating new files when possible
+4. Minimize verbose explanations unless explicitly requested by the user
+
+**Example warning scenarios**:
+- Adding complete new features (>500 lines)
+- Refactoring large sections of code
+- Implementing complex UI components
+- Creating comprehensive documentation
+
+This guideline was added based on user feedback about API token limit concerns during development work.
