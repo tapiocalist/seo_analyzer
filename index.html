@@ -1125,7 +1125,15 @@
                         };
 
                         // 根据数据长度自适应解析
-                        if (parts.length >= 14) {
+                        if (parts.length >= 15) {
+                            // 15字段格式：Keyword, Position, Previous position, Search Volume, KD, CPC, URL, Traffic, Traffic(%), Traffic Cost, Competition, Results, Trends, Intitle, SERP Links
+                            keywordInfo.searchVolume = parts[3] || '';
+                            keywordInfo.difficulty = parts[4] || '';
+                            keywordInfo.url = parts[6] || '';
+                            keywordInfo.traffic = parts[7] || '';
+                            keywordInfo.results = parts[11] || '';
+                            keywordInfo.intitle = parts[13] || ''; // Intitle是第14个字段（索引13）
+                        } else if (parts.length >= 14) {
                             // 14字段格式：Keyword, Position, Previous position, Search Volume, KD, CPC, URL, Traffic, Traffic(%), Traffic Cost, Competition, Results, Trends, Intitle
                             keywordInfo.searchVolume = parts[3] || '';
                             keywordInfo.difficulty = parts[4] || '';
