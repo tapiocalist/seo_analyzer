@@ -2172,7 +2172,6 @@
                     '页面描述',
                     '单词数',
                     'H1',
-                    'H2',
                     '1词 2词',
                     '3词 4词',
                     'SERP竞争分析标题 SERP竞争分析网址'
@@ -2235,10 +2234,7 @@
                                 value = analysis.wordCount || '0';
                                 break;
                             case 'H1':
-                                value = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('; ') || '';
-                                break;
-                            case 'H2':
-                                value = analysis.headings?.filter(h => h.level === 2).map(h => h.text).join('; ') || '';
+                                value = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('\n') || '';
                                 break;
                             case '1词 2词':
                                 const keywords1 = analysis.keywords?.single?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
