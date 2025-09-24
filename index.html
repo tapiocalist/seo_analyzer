@@ -449,7 +449,10 @@
 
         <!-- 分析HTML文件区域 -->
         <div class="card">
-            <h3 style="margin-bottom: 12px; color: #644a40;">分析HTML文件</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; color: #644a40;">分析HTML文件</h3>
+                <button class="btn" onclick="analyzeAllFiles()" id="analyzeAllBtn" style="display: none; font-size: 14px;">分析全部</button>
+            </div>
             <input type="file" id="fileInput" accept=".html,.htm" multiple style="width: 100%; padding: 12px; border: 1px solid #d8d8d8; border-radius: 6px; font-size: 14px; background: #fcfcfc; color: #202020; margin-bottom: 8px;">
             <div style="font-size: 13px; color: #666; margin-bottom: 8px;">💡 支持多次选择文件，新选择的文件会添加到列表中（重复文件会自动跳过）</div>
 
@@ -457,9 +460,8 @@
             <div id="fileList" style="margin-bottom: 12px;"></div>
 
             <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                <button class="btn" onclick="analyzeAllFiles()" id="analyzeAllBtn" style="display: none;">分析全部</button>
                 <button class="btn" onclick="copyAllToExcel()" id="copyAllBtn" style="background: #28a745; display: none;">复制全部到Excel</button>
-                <button class="btn" onclick="clearCacheData()" style="background: #dc3545; font-size: 12px; padding: 8px 12px;">清除缓存</button>
+                <button class="btn" onclick="clearCacheData()" style="background: #dc3545; font-size: 12px; padding: 8px 12px;">全部移除</button>
             </div>
         </div>
 
@@ -919,15 +921,12 @@
                         const html = await response.text();
 
                         const urlObj = new URL(url);
-                        // Use path-based filename or hostname as fallback
-                        let filename;
-                        if (urlObj.pathname && urlObj.pathname !== '/' && urlObj.pathname !== '') {
-                            // Remove leading slash and use path, replace slashes with hyphens
-                            filename = `${urlObj.pathname.substring(1).replace(/\//g, '-')}.html`;
-                        } else {
-                            // Use hostname without www prefix
-                            filename = `${urlObj.hostname.replace(/^www\./, '')}.html`;
-                        }
+                        // Create filename with sequence number and full URL format
+                        const sequenceNumber = String(i + 1).padStart(2, '0'); // 01, 02, 03...
+                        const hostname = urlObj.hostname;
+                        const pathname = urlObj.pathname.replace(/\//g, '_'); // Replace / with _
+
+                        const filename = `${sequenceNumber}_${hostname}${pathname}.html`;
 
                         downloadHTML(html, filename);
                         return { url, status: 'success', filename, html };
@@ -1609,10 +1608,39 @@
         function clearCacheData() {
             clearStorage();
 
-            // 清除界面
-            document.getElementById('fileInput').value = '';
-            document.getElementById('supplementDataInput').value = '';
-            document.getElementById('results').style.display = 'none';
+            // 清除单个文件界面
+            const fileInput = document.getElementById('fileInput');
+            const supplementInput = document.getElementById('supplementDataInput');
+            const results = document.getElementById('results');
+
+            if (fileInput) fileInput.value = '';
+            if (supplementInput) supplementInput.value = '';
+            if (results) results.style.display = 'none';
+
+            // 清除批量文件数据
+            uploadedFiles = [];
+            allAnalysisResults = [];
+
+            // 清除批量文件界面
+            const multiFileInput = document.getElementById('multiFileInput');
+            if (multiFileInput) {
+                multiFileInput.value = '';
+            }
+
+            // 更新文件列表显示
+            displayFileList();
+
+            // 隐藏和重置按钮
+            const analyzeAllBtn = document.getElementById('analyzeAllBtn');
+            const copyAllBtn = document.getElementById('copyAllBtn');
+            if (analyzeAllBtn) {
+                analyzeAllBtn.style.display = 'none';
+                analyzeAllBtn.disabled = false;
+                analyzeAllBtn.textContent = '分析全部';
+            }
+            if (copyAllBtn) {
+                copyAllBtn.style.display = 'none';
+            }
 
             // 清除文件恢复状态指示器
             const statusDiv = document.getElementById('fileRestoreStatus');
@@ -1789,84 +1817,130 @@
 
                 const analysis = savedData.analysisResults.analysis;
                 const supplementInfo = savedData.analysisResults.supplementInfo;
+                const fileName = savedData.fileName || '当前文件';
 
-                // 创建单行格式的Excel数据
-                const headers = [
-                    '关键词', 'URL', '获得流量', '搜索结果数量', 'Intitle', 'KD难度', 'KGR',
-                    '页面标题', '页面描述', 'H1', 'H2', '单词数',
-                    '1词', '2词', '3词', '4词',
-                    'SERP竞争分析标题', 'SERP竞争分析网址'
+                // 使用与批量导出相同的列格式
+                const rowTitles = [
+                    'URL',
+                    '关键词',
+                    'Search Volume',
+                    '搜索结果数量',
+                    'Intitle',
+                    '获得流量',
+                    'KD难度',
+                    'KGR',
+                    '页面标题',
+                    '页面描述',
+                    '单词数',
+                    'H1',
+                    '1词 2词',
+                    '3词 4词',
+                    'SERP竞争分析标题 SERP竞争分析网址'
                 ];
 
-                const dataRow = [];
+                // 创建数据数组，每一行是一个属性，第二列是该文件的数据
+                const excelData = [];
+                const headerRow = ['', fileName];
+                excelData.push(headerRow);
 
-                // 关键词指标
-                if (supplementInfo && supplementInfo.keywordInfo) {
-                    const kw = supplementInfo.keywordInfo;
-                    dataRow.push(kw.keyword || ''); // 关键词
-                    dataRow.push(kw.url || ''); // URL
-                    dataRow.push(kw.traffic || ''); // 获得流量
-                    dataRow.push(kw.results || ''); // 搜索结果数量
-                    dataRow.push(kw.intitle || ''); // Intitle
-                    dataRow.push(kw.difficulty || ''); // KD难度
-                    dataRow.push(calculateKGR(kw.intitle, kw.results)); // KGR
-                } else {
-                    dataRow.push('', '', '', '', '', '', ''); // 空的关键词指标
-                }
+                // 为每个属性创建一行数据
+                rowTitles.forEach(title => {
+                    const row = [title]; // 第一列是属性名
 
-                // 页面信息
-                dataRow.push(analysis.title || ''); // 页面标题
-                dataRow.push(analysis.description || ''); // 页面描述
+                    let value = '';
 
-                // H标签
-                const h1Tags = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('; ') || '';
-                const h2Tags = analysis.headings?.filter(h => h.level === 2).map(h => h.text).join('; ') || '';
-                dataRow.push(h1Tags); // H1
-                dataRow.push(h2Tags); // H2
+                    switch (title) {
+                        case 'URL':
+                            value = supplementInfo?.keywordInfo?.url || '';
+                            break;
+                        case '关键词':
+                            value = supplementInfo?.keywordInfo?.keyword || '';
+                            break;
+                        case 'Search Volume':
+                            value = supplementInfo?.keywordInfo?.searchVolume || '';
+                            break;
+                        case '搜索结果数量':
+                            value = supplementInfo?.keywordInfo?.results || '';
+                            break;
+                        case 'Intitle':
+                            value = supplementInfo?.keywordInfo?.intitle || '';
+                            break;
+                        case '获得流量':
+                            value = supplementInfo?.keywordInfo?.traffic || '';
+                            break;
+                        case 'KD难度':
+                            value = supplementInfo?.keywordInfo?.difficulty || '';
+                            break;
+                        case 'KGR':
+                            value = supplementInfo?.keywordInfo?.intitle && supplementInfo?.keywordInfo?.results ?
+                                   calculateKGR(supplementInfo.keywordInfo.intitle, supplementInfo.keywordInfo.results) : '';
+                            break;
+                        case '页面标题':
+                            value = analysis.title || '';
+                            break;
+                        case '页面描述':
+                            value = analysis.description || '';
+                            break;
+                        case '单词数':
+                            value = analysis.wordCount || '0';
+                            break;
+                        case 'H1':
+                            value = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('\n') || '';
+                            break;
+                        case '1词 2词':
+                            const keywords1 = analysis.keywords?.single?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                            const keywords2 = analysis.keywords?.double?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                            const rows12 = [`1词\t2词`];
+                            const maxRows12 = Math.max(keywords1.length, keywords2.length);
+                            for (let i = 0; i < maxRows12; i++) {
+                                const word1 = keywords1[i] || '';
+                                const word2 = keywords2[i] || '';
+                                rows12.push(`${word1}\t${word2}`);
+                            }
+                            value = rows12.join('\n');
+                            break;
+                        case '3词 4词':
+                            const keywords3 = analysis.keywords?.triple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                            const keywords4 = analysis.keywords?.quadruple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                            const rows34 = [`3词\t4词`];
+                            const maxRows34 = Math.max(keywords3.length, keywords4.length);
+                            for (let i = 0; i < maxRows34; i++) {
+                                const word3 = keywords3[i] || '';
+                                const word4 = keywords4[i] || '';
+                                rows34.push(`${word3}\t${word4}`);
+                            }
+                            value = rows34.join('\n');
+                            break;
+                        case 'SERP竞争分析标题 SERP竞争分析网址':
+                            const serpTitles = supplementInfo?.serpLinks?.map(link => link.title) || [];
+                            const serpUrls = supplementInfo?.serpLinks?.map(link => link.url) || [];
+                            const serpRows = [`SERP竞争分析标题\tSERP竞争分析网址`];
+                            const maxSerpRows = Math.max(serpTitles.length, serpUrls.length);
+                            for (let i = 0; i < maxSerpRows; i++) {
+                                const title = serpTitles[i] || '';
+                                const url = serpUrls[i] || '';
+                                serpRows.push(`${title}\t${url}`);
+                            }
+                            value = maxSerpRows > 0 ? serpRows.join('\n') : 'SERP竞争分析标题\tSERP竞争分析网址\n暂无SERP数据\t';
+                            break;
+                    }
 
-                // 单词数
-                dataRow.push(analysis.wordCount || '0'); // 单词数
-
-                // 关键词密度（按词数分组）
-                const keywords1 = analysis.keywords?.single?.map(k => `${k.word}(${k.count})`).join('; ') || '';
-                const keywords2 = analysis.keywords?.double?.map(k => `${k.word}(${k.count})`).join('; ') || '';
-                const keywords3 = analysis.keywords?.triple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
-                const keywords4 = analysis.keywords?.quadruple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
-
-                dataRow.push(keywords1); // 1词
-                dataRow.push(keywords2); // 2词
-                dataRow.push(keywords3); // 3词
-                dataRow.push(keywords4); // 4词
-
-                // SERP竞争分析
-                if (supplementInfo && supplementInfo.serpLinks && supplementInfo.serpLinks.length > 0) {
-                    const serpTitles = supplementInfo.serpLinks.map(link => link.title).join('; ');
-                    const serpUrls = supplementInfo.serpLinks.map(link => link.url).join('; ');
-                    dataRow.push(serpTitles); // SERP竞争分析标题
-                    dataRow.push(serpUrls); // SERP竞争分析网址
-                } else {
-                    dataRow.push('', ''); // 空的SERP数据
-                }
-
-                const excelData = [headers, dataRow];
+                    row.push(value);
+                    excelData.push(row);
+                });
 
                 // 转换为制表符分隔的格式
                 const tsvContent = excelData.map(row => row.join('\t')).join('\n');
 
-                // 复制到剪贴板 - 优先使用更可靠的方法
-                try {
-                    if (navigator.clipboard && window.isSecureContext) {
-                        navigator.clipboard.writeText(tsvContent).then(() => {
-                            showCopySuccessNotification();
-                        }).catch(err => {
-                            console.warn('Clipboard API失败，使用fallback:', err);
-                            fallbackCopyToClipboard(tsvContent);
-                        });
-                    } else {
+                // 复制到剪贴板
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(tsvContent).then(() => {
+                        // 复制成功，不显示提示
+                    }).catch(err => {
+                        console.warn('Clipboard API失败，使用fallback:', err);
                         fallbackCopyToClipboard(tsvContent);
-                    }
-                } catch (error) {
-                    console.error('复制过程出错:', error);
+                    });
+                } else {
                     fallbackCopyToClipboard(tsvContent);
                 }
 
@@ -2030,6 +2104,7 @@
                         <strong style="color: #644a40; font-size: 14px;">${file.name}</strong>
                         <div style="display: flex; gap: 4px;">
                             <button class="btn" onclick="removeFile(${index})" style="background: #dc3545; font-size: 12px; padding: 4px 8px;">移除</button>
+                            <button class="btn" onclick="copySingleFileToExcel(${index})" id="copyBtn-${index}" style="background: #28a745; font-size: 12px; padding: 4px 8px;" disabled>复制到Excel</button>
                             <button class="btn" onclick="viewFileDetails(${index})" id="detailBtn-${index}" style="background: #ccc; font-size: 12px; padding: 4px 8px;" disabled>查看详情</button>
                         </div>
                     </div>
@@ -2108,12 +2183,17 @@
                 const copyAllBtn = document.getElementById('copyAllBtn');
                 copyAllBtn.style.display = 'inline-block'; // 分析完成后显示复制按钮
 
-                // 启用所有详情按钮
+                // 启用所有详情按钮和复制按钮
                 for (let i = 0; i < uploadedFiles.length; i++) {
                     const detailBtn = document.getElementById(`detailBtn-${i}`);
+                    const copyBtn = document.getElementById(`copyBtn-${i}`);
                     if (detailBtn) {
                         detailBtn.disabled = false;
                         detailBtn.style.background = '#666';
+                    }
+                    if (copyBtn) {
+                        copyBtn.disabled = false;
+                        copyBtn.style.background = '#28a745';
                     }
                 }
 
@@ -2158,8 +2238,8 @@
             }
 
             try {
-                // 按照用户要求的顺序创建标题行（移除重复的文件名）
-                const rowTitles = [
+                // 基础标题行
+                let rowTitles = [
                     'URL',
                     '关键词',
                     'Search Volume',
@@ -2172,10 +2252,19 @@
                     '页面描述',
                     '单词数',
                     'H1',
-                    '1词 2词',
-                    '3词 4词',
-                    'SERP竞争分析标题 SERP竞争分析网址'
+                    '2词 4词',
+                    '1词 3词'
                 ];
+
+                // 检查是否有任何文件包含SERP数据
+                const hasAnySerpData = allAnalysisResults.some(result =>
+                    !result.error && result.supplementInfo?.serpLinks && result.supplementInfo.serpLinks.length > 0
+                );
+
+                // 只有当至少有一个文件有SERP数据时才添加SERP相关行
+                if (hasAnySerpData) {
+                    rowTitles.push('SERP竞争分析标题 SERP竞争分析网址');
+                }
 
                 // 创建数据数组，每一行是一个属性，每一列是一个文件
                 const excelData = [];
@@ -2236,31 +2325,31 @@
                             case 'H1':
                                 value = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('\n') || '';
                                 break;
-                            case '1词 2词':
+                            case '1词 3词':
                                 const keywords1 = analysis.keywords?.single?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
-                                const keywords2 = analysis.keywords?.double?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
-                                // 创建1词|2词的并排格式（包含标题）
-                                const rows12 = [`1词\t2词`]; // 添加标题行
-                                const maxRows12 = Math.max(keywords1.length, keywords2.length);
-                                for (let i = 0; i < maxRows12; i++) {
-                                    const word1 = keywords1[i] || '';
-                                    const word2 = keywords2[i] || '';
-                                    rows12.push(`${word1}\t${word2}`);
-                                }
-                                value = rows12.join('\n');
-                                break;
-                            case '3词 4词':
                                 const keywords3 = analysis.keywords?.triple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
-                                const keywords4 = analysis.keywords?.quadruple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
-                                // 创建3词|4词的并排格式（包含标题）
-                                const rows34 = [`3词\t4词`]; // 添加标题行
-                                const maxRows34 = Math.max(keywords3.length, keywords4.length);
-                                for (let i = 0; i < maxRows34; i++) {
+                                // 创建1词|3词的并排格式（包含标题）
+                                const rows13 = [`1词\t3词`]; // 添加标题行
+                                const maxRows13 = Math.max(keywords1.length, keywords3.length);
+                                for (let i = 0; i < maxRows13; i++) {
+                                    const word1 = keywords1[i] || '';
                                     const word3 = keywords3[i] || '';
-                                    const word4 = keywords4[i] || '';
-                                    rows34.push(`${word3}\t${word4}`);
+                                    rows13.push(`${word1}\t${word3}`);
                                 }
-                                value = rows34.join('\n');
+                                value = rows13.join('\n');
+                                break;
+                            case '2词 4词':
+                                const keywords2 = analysis.keywords?.double?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                                const keywords4 = analysis.keywords?.quadruple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                                // 创建2词|4词的并排格式（包含标题）
+                                const rows24 = [`2词\t4词`]; // 添加标题行
+                                const maxRows24 = Math.max(keywords2.length, keywords4.length);
+                                for (let i = 0; i < maxRows24; i++) {
+                                    const word2 = keywords2[i] || '';
+                                    const word4 = keywords4[i] || '';
+                                    rows24.push(`${word2}\t${word4}`);
+                                }
+                                value = rows24.join('\n');
                                 break;
                             case 'SERP竞争分析标题 SERP竞争分析网址':
                                 const serpTitles = supplementInfo?.serpLinks?.map(link => link.title) || [];
@@ -2278,7 +2367,8 @@
                                     const url = serpUrls[i] || '';
                                     serpRows.push(`${title}\t${url}`);
                                 }
-                                value = maxSerpRows > 0 ? serpRows.join('\n') : 'SERP竞争分析标题\tSERP竞争分析网址\n暂无SERP数据\t';
+                                // 如果有SERP数据就显示，没有就留空（因为这个分支只有在hasAnySerpData为true时才会执行）
+                                value = maxSerpRows > 0 ? serpRows.join('\n') : 'SERP竞争分析标题\tSERP竞争分析网址';
                                 break;
                         }
 
@@ -2294,7 +2384,7 @@
                 // 复制到剪贴板
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(tsvContent).then(() => {
-                        showCopySuccessNotification('批量数据已复制到剪贴板（列格式）');
+                        // 复制成功，不显示提示
                     }).catch(err => {
                         console.warn('Clipboard API失败，使用fallback:', err);
                         fallbackCopyToClipboard(tsvContent);
@@ -2332,6 +2422,197 @@
                     notification.parentNode.removeChild(notification);
                 }
             }, 3000);
+        }
+
+        // 复制单个文件到Excel
+        function copySingleFileToExcel(fileIndex) {
+            if (fileIndex >= uploadedFiles.length) {
+                alert('文件索引错误');
+                return;
+            }
+
+            if (allAnalysisResults.length === 0) {
+                alert('请先点击"分析全部"进行分析');
+                return;
+            }
+
+            const result = allAnalysisResults[fileIndex];
+            if (!result) {
+                alert('该文件的分析结果不存在，请重新分析');
+                return;
+            }
+
+            if (result.error) {
+                alert(`文件 ${uploadedFiles[fileIndex].name} 分析失败: ${result.error}`);
+                return;
+            }
+
+            try {
+                // 获取文件的补充信息
+                const supplementTextarea = document.querySelector(`textarea[data-file-index="${fileIndex}"]`);
+                const supplementText = supplementTextarea ? supplementTextarea.value.trim() : '';
+
+                let keywordInfo = null;
+                let serpLinks = [];
+
+                if (supplementText) {
+                    try {
+                        const parsedData = parseKeywordAndSerpData(supplementText);
+                        keywordInfo = parsedData.keywordInfo;
+                        serpLinks = parsedData.serpLinks || [];
+                    } catch (error) {
+                        console.warn('解析补充数据失败:', error);
+                    }
+                }
+
+                // 使用与批量导出相同的格式生成Excel数据
+                const excelData = generateSingleFileExcelData(
+                    uploadedFiles[fileIndex].name,
+                    result.analysis,
+                    keywordInfo,
+                    serpLinks
+                );
+
+                // 复制到剪贴板
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(excelData).then(() => {
+                        // 复制成功，不显示提示
+                    }).catch(err => {
+                        console.error('复制失败:', err);
+                        showManualCopyDialog(excelData);
+                    });
+                } else {
+                    showManualCopyDialog(excelData);
+                }
+
+            } catch (error) {
+                console.error('生成Excel数据失败:', error);
+                alert('生成Excel数据失败，请查看控制台了解详细信息');
+            }
+        }
+
+        // 生成单个文件的Excel数据（与批量导出格式完全一致）
+        function generateSingleFileExcelData(filename, analysis, keywordInfo, serpLinks) {
+            // 基础行标题
+            let rowTitles = [
+                'URL',
+                '关键词',
+                'Search Volume',
+                '搜索结果数量',
+                'Intitle',
+                '获得流量',
+                'KD难度',
+                'KGR',
+                '页面标题',
+                '页面描述',
+                '单词数',
+                'H1',
+                '2词 4词',
+                '1词 3词'
+            ];
+
+            // 只有当有SERP数据时才添加SERP相关行
+            if (serpLinks && serpLinks.length > 0) {
+                rowTitles.push('SERP竞争分析标题 SERP竞争分析网址');
+            }
+
+            const data = [];
+
+            // 创建标题行（文件名作为列标题）
+            data.push(['', filename]);
+
+            // 为每个属性创建一行数据
+            rowTitles.forEach(title => {
+                const row = [title]; // 第一列是属性名
+                let value = '';
+
+                switch (title) {
+                    case 'URL':
+                        value = keywordInfo?.url || '';
+                        break;
+                    case '关键词':
+                        value = keywordInfo?.keyword || '';
+                        break;
+                    case 'Search Volume':
+                        value = keywordInfo?.searchVolume || '';
+                        break;
+                    case '搜索结果数量':
+                        value = keywordInfo?.results || '';
+                        break;
+                    case 'Intitle':
+                        value = keywordInfo?.intitle || '';
+                        break;
+                    case '获得流量':
+                        value = keywordInfo?.traffic || '';
+                        break;
+                    case 'KD难度':
+                        value = keywordInfo?.difficulty || '';
+                        break;
+                    case 'KGR':
+                        value = keywordInfo?.intitle && keywordInfo?.results ?
+                               calculateKGR(keywordInfo.intitle, keywordInfo.results) : '';
+                        break;
+                    case '页面标题':
+                        value = analysis.title || '';
+                        break;
+                    case '页面描述':
+                        value = analysis.description || '';
+                        break;
+                    case '单词数':
+                        value = analysis.wordCount || '0';
+                        break;
+                    case 'H1':
+                        value = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('\n') || '';
+                        break;
+                    case '1词 3词':
+                        const keywords1 = analysis.keywords?.single?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                        const keywords3 = analysis.keywords?.triple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                        // 创建1词|3词的并排格式（包含标题）
+                        const rows13 = [`1词\t3词`]; // 添加标题行
+                        const maxRows13 = Math.max(keywords1.length, keywords3.length);
+                        for (let i = 0; i < maxRows13; i++) {
+                            const word1 = keywords1[i] || '';
+                            const word3 = keywords3[i] || '';
+                            rows13.push(`${word1}\t${word3}`);
+                        }
+                        value = rows13.join('\n');
+                        break;
+                    case '2词 4词':
+                        const keywords2 = analysis.keywords?.double?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                        const keywords4 = analysis.keywords?.quadruple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                        // 创建2词|4词的并排格式（包含标题）
+                        const rows24 = [`2词\t4词`]; // 添加标题行
+                        const maxRows24 = Math.max(keywords2.length, keywords4.length);
+                        for (let i = 0; i < maxRows24; i++) {
+                            const word2 = keywords2[i] || '';
+                            const word4 = keywords4[i] || '';
+                            rows24.push(`${word2}\t${word4}`);
+                        }
+                        value = rows24.join('\n');
+                        break;
+                    case 'SERP竞争分析标题 SERP竞争分析网址':
+                        const serpTitles = serpLinks?.map(link => link.title) || [];
+                        const serpUrls = serpLinks?.map(link => link.url) || [];
+
+                        // 创建SERP标题|网址的并排格式（包含标题）
+                        const serpRows = [`SERP竞争分析标题\tSERP竞争分析网址`]; // 添加标题行
+                        const maxSerpRows = Math.max(serpTitles.length, serpUrls.length);
+                        for (let i = 0; i < maxSerpRows; i++) {
+                            const title = serpTitles[i] || '';
+                            const url = serpUrls[i] || '';
+                            serpRows.push(`${title}\t${url}`);
+                        }
+                        // 由于只有在有SERP数据时才会添加这个case，所以这里直接显示数据即可
+                        value = serpRows.join('\n');
+                        break;
+                }
+
+                row.push(value);
+                data.push(row);
+            });
+
+            // 转换为TSV格式
+            return data.map(row => row.join('\t')).join('\n');
         }
 
         // 查看单个文件的详情
@@ -2515,15 +2796,12 @@
                         const html = await response.text();
 
                         const urlObj = new URL(url);
-                        // Use path-based filename or hostname as fallback
-                        let filename;
-                        if (urlObj.pathname && urlObj.pathname !== '/' && urlObj.pathname !== '') {
-                            // Remove leading slash and use path, replace slashes with hyphens
-                            filename = `${urlObj.pathname.substring(1).replace(/\//g, '-')}.html`;
-                        } else {
-                            // Use hostname without www prefix
-                            filename = `${urlObj.hostname.replace(/^www\./, '')}.html`;
-                        }
+                        // Create filename with sequence number and full URL format
+                        const sequenceNumber = String(i + 1).padStart(2, '0'); // 01, 02, 03...
+                        const hostname = urlObj.hostname;
+                        const pathname = urlObj.pathname.replace(/\//g, '_'); // Replace / with _
+
+                        const filename = `${sequenceNumber}_${hostname}${pathname}.html`;
 
                         downloadHTML(html, filename);
                         return { url, status: 'success', filename };
