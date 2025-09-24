@@ -919,7 +919,15 @@
                         const html = await response.text();
 
                         const urlObj = new URL(url);
-                        const filename = `${urlObj.hostname}.html`;
+                        // Use path-based filename or hostname as fallback
+                        let filename;
+                        if (urlObj.pathname && urlObj.pathname !== '/' && urlObj.pathname !== '') {
+                            // Remove leading slash and use path, replace slashes with hyphens
+                            filename = `${urlObj.pathname.substring(1).replace(/\//g, '-')}.html`;
+                        } else {
+                            // Use hostname without www prefix
+                            filename = `${urlObj.hostname.replace(/^www\./, '')}.html`;
+                        }
 
                         downloadHTML(html, filename);
                         return { url, status: 'success', filename, html };
@@ -1025,6 +1033,11 @@
             }
         }
 
+        function shouldExcludeSerpUrl(url) {
+            const excludedDomains = ['google.com', 'youtube.com', 'apple.com', 'reddit.com'];
+            return excludedDomains.some(domain => url.includes(domain));
+        }
+
         function parseKeywordAndSerpData(data) {
             console.log('Starting to parse supplement data');
             const lines = data.split('\n').filter(line => line.trim());
@@ -1039,18 +1052,28 @@
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
+                console.log(`Line ${i}: "${line}"`);
 
                 // 检查是否是关键词信息开始
                 if (line.includes('关键词信息') || line.toLowerCase().includes('keyword')) {
                     currentSection = 'keyword';
+                    console.log('Found keyword section at line', i);
                     continue;
                 }
 
                 // 检查是否是SERP链接开始
-                if (line.includes('SERP links') || (line.includes('URL') && line.includes('网站标题'))) {
+                if (line.includes('SERP links') || line.includes('SERP Links') || (line.includes('URL') && line.includes('网站标题')) || line.includes('SERP Links"')) {
                     currentSection = 'serp';
                     serpLinksStarted = true;
+                    console.log('Found SERP section at line', i);
                     continue;
+                }
+
+                // 检查是否遇到项目符号格式的SERP条目
+                if ((line.startsWith('•') || line.startsWith('"•')) && currentSection !== 'serp') {
+                    console.log('Detected bullet point SERP entry, switching to SERP section');
+                    currentSection = 'serp';
+                    serpLinksStarted = true;
                 }
 
                 // 如果没有找到关键词数据，并且当前行不是tab分隔的数据，检查是否是Google格式SERP开始
@@ -1086,7 +1109,8 @@
                         result.keywordInfo = {
                             keyword: parts[0] || '',
                             position: parts[1] || '',
-                            difficulty: parts[4] || '',
+                            searchVolume: parts[3] || '', // Search Volume
+                            difficulty: parts[4] || '', // Keyword Difficulty
                             results: parts[11] || '', // Number of Results
                             intitle: parts[12] || '', // intitle 结果数
                             url: parts[6] || '',
@@ -1101,9 +1125,46 @@
 
                 // 解析SERP链接
                 if (currentSection === 'serp' && serpLinksStarted) {
+                    console.log(`Processing SERP line ${i}: "${line}"`);
+
                     // 如果是空行，跳过
                     if (!line) {
+                        console.log('Skipping empty line');
                         continue;
+                    }
+
+                    // 检查是否是新的项目符号格式（• 开头的标题行）
+                    if (line.startsWith('•') || line.startsWith('"•')) {
+                        console.log('Found bullet point line:', line);
+                        // 移除项目符号和引号
+                        let title = line.replace(/^["•\s]+/, '').replace(/["]+$/, '');
+                        console.log('Extracted title:', title);
+
+                        // 查找下一行的URL
+                        if (i + 1 < lines.length) {
+                            const nextLine = lines[i + 1].trim();
+                            console.log('Next line:', nextLine);
+                            if (nextLine.startsWith('http')) {
+                                // 检查是否是需要排除的域名
+                                if (!shouldExcludeSerpUrl(nextLine)) {
+                                    result.serpLinks.push({
+                                        title: title,
+                                        url: nextLine
+                                    });
+                                    console.log(`Parsed bullet SERP entry: "${title}" -> ${nextLine}`);
+                                } else {
+                                    console.log(`Excluded SERP entry due to domain filter: "${title}" -> ${nextLine}`);
+                                }
+                                i++; // 跳过URL行
+                                continue;
+                            } else {
+                                console.log('Next line is not a URL');
+                            }
+                        } else {
+                            console.log('No next line available');
+                        }
+                    } else {
+                        console.log('Line does not start with bullet point');
                     }
 
                     // 检查接下来几行是否符合Google格式
@@ -1120,14 +1181,19 @@
                         // Google格式：解析从当前位置开始的所有数据
                         const googleResults = parseGoogleFormat(lines, i);
                         if (googleResults.length > 0) {
-                            result.serpLinks.push(...googleResults);
+                            // 过滤掉排除的域名
+                            const filteredResults = googleResults.filter(result => !shouldExcludeSerpUrl(result.url));
+                            result.serpLinks.push(...filteredResults);
                         }
                         break; // 已解析完所有Google格式数据
                     } else if (line.includes('http')) {
                         // 原有格式
                         const parsed = parseSerpLine(line);
-                        if (parsed) {
+                        if (parsed && !shouldExcludeSerpUrl(parsed.url)) {
                             result.serpLinks.push(parsed);
+                            console.log(`Parsed simple SERP entry: "${parsed.title}" -> ${parsed.url}`);
+                        } else if (parsed) {
+                            console.log(`Excluded simple SERP entry due to domain filter: "${parsed.title}" -> ${parsed.url}`);
                         }
                     }
                 }
@@ -2092,75 +2158,139 @@
             }
 
             try {
-                const headers = [
-                    '文件名', '关键词', 'URL', '获得流量', '搜索结果数量', 'Intitle', 'KD难度', 'KGR',
-                    '页面标题', '页面描述', 'H1', 'H2', '单词数',
-                    '1词', '2词', '3词', '4词',
-                    'SERP竞争分析标题', 'SERP竞争分析网址'
+                // 按照用户要求的顺序创建标题行（移除重复的文件名）
+                const rowTitles = [
+                    'URL',
+                    '关键词',
+                    'Search Volume',
+                    '搜索结果数量',
+                    'Intitle',
+                    '获得流量',
+                    'KD难度',
+                    'KGR',
+                    '页面标题',
+                    '页面描述',
+                    '单词数',
+                    'H1',
+                    'H2',
+                    '1词 2词',
+                    '3词 4词',
+                    'SERP竞争分析标题 SERP竞争分析网址'
                 ];
 
-                const dataRows = allAnalysisResults.map(result => {
-                    if (result.error) {
-                        return [result.fileName, '分析失败', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
-                    }
+                // 创建数据数组，每一行是一个属性，每一列是一个文件
+                const excelData = [];
 
-                    const { fileName, analysis, supplementInfo } = result;
-                    const dataRow = [];
+                // 创建标题行：第一列是空的，其余列是文件名
+                const headerRow = ['', ...allAnalysisResults.map(result => result.fileName)];
+                excelData.push(headerRow);
 
-                    dataRow.push(fileName); // 文件名
+                // 为每个属性创建一行数据
+                rowTitles.forEach(title => {
+                    const row = [title]; // 第一列是属性名
 
-                    // 关键词指标
-                    if (supplementInfo && supplementInfo.keywordInfo) {
-                        const kw = supplementInfo.keywordInfo;
-                        dataRow.push(kw.keyword || ''); // 关键词
-                        dataRow.push(kw.url || ''); // URL
-                        dataRow.push(kw.traffic || ''); // 获得流量
-                        dataRow.push(kw.results || ''); // 搜索结果数量
-                        dataRow.push(kw.intitle || ''); // Intitle
-                        dataRow.push(kw.difficulty || ''); // KD难度
-                        dataRow.push(calculateKGR(kw.intitle, kw.results)); // KGR
-                    } else {
-                        dataRow.push('', '', '', '', '', '', ''); // 空的关键词指标
-                    }
+                    // 为每个文件添加对应的数据
+                    allAnalysisResults.forEach(result => {
+                        if (result.error) {
+                            row.push('分析失败');
+                            return;
+                        }
 
-                    // 页面信息
-                    dataRow.push(analysis.title || ''); // 页面标题
-                    dataRow.push(analysis.description || ''); // 页面描述
+                        const { analysis, supplementInfo } = result;
+                        let value = '';
 
-                    // H标签
-                    const h1Tags = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('; ') || '';
-                    const h2Tags = analysis.headings?.filter(h => h.level === 2).map(h => h.text).join('; ') || '';
-                    dataRow.push(h1Tags); // H1
-                    dataRow.push(h2Tags); // H2
+                        switch (title) {
+                            case 'URL':
+                                value = supplementInfo?.keywordInfo?.url || '';
+                                break;
+                            case '关键词':
+                                value = supplementInfo?.keywordInfo?.keyword || '';
+                                break;
+                            case 'Search Volume':
+                                value = supplementInfo?.keywordInfo?.searchVolume || '';
+                                break;
+                            case '搜索结果数量':
+                                value = supplementInfo?.keywordInfo?.results || '';
+                                break;
+                            case 'Intitle':
+                                value = supplementInfo?.keywordInfo?.intitle || '';
+                                break;
+                            case '获得流量':
+                                value = supplementInfo?.keywordInfo?.traffic || '';
+                                break;
+                            case 'KD难度':
+                                value = supplementInfo?.keywordInfo?.difficulty || '';
+                                break;
+                            case 'KGR':
+                                value = supplementInfo?.keywordInfo?.intitle && supplementInfo?.keywordInfo?.results ?
+                                       calculateKGR(supplementInfo.keywordInfo.intitle, supplementInfo.keywordInfo.results) : '';
+                                break;
+                            case '页面标题':
+                                value = analysis.title || '';
+                                break;
+                            case '页面描述':
+                                value = analysis.description || '';
+                                break;
+                            case '单词数':
+                                value = analysis.wordCount || '0';
+                                break;
+                            case 'H1':
+                                value = analysis.headings?.filter(h => h.level === 1).map(h => h.text).join('; ') || '';
+                                break;
+                            case 'H2':
+                                value = analysis.headings?.filter(h => h.level === 2).map(h => h.text).join('; ') || '';
+                                break;
+                            case '1词 2词':
+                                const keywords1 = analysis.keywords?.single?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                                const keywords2 = analysis.keywords?.double?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                                // 创建1词|2词的并排格式（包含标题）
+                                const rows12 = [`1词\t2词`]; // 添加标题行
+                                const maxRows12 = Math.max(keywords1.length, keywords2.length);
+                                for (let i = 0; i < maxRows12; i++) {
+                                    const word1 = keywords1[i] || '';
+                                    const word2 = keywords2[i] || '';
+                                    rows12.push(`${word1}\t${word2}`);
+                                }
+                                value = rows12.join('\n');
+                                break;
+                            case '3词 4词':
+                                const keywords3 = analysis.keywords?.triple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                                const keywords4 = analysis.keywords?.quadruple?.slice(0, 10).map(k => `${k.word}(${k.count})`) || [];
+                                // 创建3词|4词的并排格式（包含标题）
+                                const rows34 = [`3词\t4词`]; // 添加标题行
+                                const maxRows34 = Math.max(keywords3.length, keywords4.length);
+                                for (let i = 0; i < maxRows34; i++) {
+                                    const word3 = keywords3[i] || '';
+                                    const word4 = keywords4[i] || '';
+                                    rows34.push(`${word3}\t${word4}`);
+                                }
+                                value = rows34.join('\n');
+                                break;
+                            case 'SERP竞争分析标题 SERP竞争分析网址':
+                                const serpTitles = supplementInfo?.serpLinks?.map(link => link.title) || [];
+                                const serpUrls = supplementInfo?.serpLinks?.map(link => link.url) || [];
+                                console.log('SERP Debug - supplementInfo:', supplementInfo);
+                                console.log('SERP Debug - serpLinks count:', supplementInfo?.serpLinks?.length || 0);
+                                console.log('SERP Debug - serpTitles:', serpTitles);
+                                console.log('SERP Debug - serpUrls:', serpUrls);
 
-                    // 单词数
-                    dataRow.push(analysis.wordCount || '0'); // 单词数
+                                // 创建SERP标题|网址的并排格式（包含标题）
+                                const serpRows = [`SERP竞争分析标题\tSERP竞争分析网址`]; // 添加标题行
+                                const maxSerpRows = Math.max(serpTitles.length, serpUrls.length);
+                                for (let i = 0; i < maxSerpRows; i++) {
+                                    const title = serpTitles[i] || '';
+                                    const url = serpUrls[i] || '';
+                                    serpRows.push(`${title}\t${url}`);
+                                }
+                                value = maxSerpRows > 0 ? serpRows.join('\n') : 'SERP竞争分析标题\tSERP竞争分析网址\n暂无SERP数据\t';
+                                break;
+                        }
 
-                    // 关键词密度（按词数分组）
-                    const keywords1 = analysis.keywords?.single?.map(k => `${k.word}(${k.count})`).join('; ') || '';
-                    const keywords2 = analysis.keywords?.double?.map(k => `${k.word}(${k.count})`).join('; ') || '';
-                    const keywords3 = analysis.keywords?.triple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
-                    const keywords4 = analysis.keywords?.quadruple?.map(k => `${k.word}(${k.count})`).join('; ') || '';
+                        row.push(value);
+                    });
 
-                    dataRow.push(keywords1); // 1词
-                    dataRow.push(keywords2); // 2词
-                    dataRow.push(keywords3); // 3词
-                    dataRow.push(keywords4); // 4词
-
-                    // SERP竞争分析
-                    if (supplementInfo && supplementInfo.serpLinks && supplementInfo.serpLinks.length > 0) {
-                        const serpTitles = supplementInfo.serpLinks.map(link => link.title).join('; ');
-                        const serpUrls = supplementInfo.serpLinks.map(link => link.url).join('; ');
-                        dataRow.push(serpTitles); // SERP竞争分析标题
-                        dataRow.push(serpUrls); // SERP竞争分析网址
-                    } else {
-                        dataRow.push('', ''); // 空的SERP数据
-                    }
-
-                    return dataRow;
+                    excelData.push(row);
                 });
-
-                const excelData = [headers, ...dataRows];
 
                 // 转换为制表符分隔的格式
                 const tsvContent = excelData.map(row => row.join('\t')).join('\n');
@@ -2168,7 +2298,7 @@
                 // 复制到剪贴板
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(tsvContent).then(() => {
-                        showCopySuccessNotification('批量数据已复制到剪贴板');
+                        showCopySuccessNotification('批量数据已复制到剪贴板（列格式）');
                     }).catch(err => {
                         console.warn('Clipboard API失败，使用fallback:', err);
                         fallbackCopyToClipboard(tsvContent);
@@ -2389,7 +2519,15 @@
                         const html = await response.text();
 
                         const urlObj = new URL(url);
-                        const filename = `${urlObj.hostname}.html`;
+                        // Use path-based filename or hostname as fallback
+                        let filename;
+                        if (urlObj.pathname && urlObj.pathname !== '/' && urlObj.pathname !== '') {
+                            // Remove leading slash and use path, replace slashes with hyphens
+                            filename = `${urlObj.pathname.substring(1).replace(/\//g, '-')}.html`;
+                        } else {
+                            // Use hostname without www prefix
+                            filename = `${urlObj.hostname.replace(/^www\./, '')}.html`;
+                        }
 
                         downloadHTML(html, filename);
                         return { url, status: 'success', filename };
