@@ -64,10 +64,14 @@
       "mcp__playwright__browser_file_upload",
       "mcp__playwright__browser_take_screenshot",
       "mcp__playwright__browser_snapshot",
-      "Read(//f/Claude Code/**)"
+      "Read(//f/Claude Code/**)",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_network_requests"
     ],
     "deny": [],
     "ask": [],
-    "additionalDirectories": ["F:/Claude Code"]
+    "additionalDirectories": [
+      "F:/Claude Code"
+    ]
   }
 }
