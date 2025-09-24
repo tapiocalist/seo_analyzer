@@ -1033,7 +1033,7 @@
         }
 
         function shouldExcludeSerpUrl(url) {
-            const excludedDomains = ['google.com', 'youtube.com', 'apple.com', 'reddit.com', 'adobe.com', 'canva.com', 'microsoft.com'];
+            const excludedDomains = ['google.com', 'youtube.com', 'apple.com', 'reddit.com', 'adobe.com', 'canva.com', 'microsoft.com', 'evernote.com'];
             return excludedDomains.some(domain => url.includes(domain));
         }
 
@@ -1095,26 +1095,87 @@
                 }
 
                 // 解析关键词数据
-                if (currentSection === 'keyword' && line.includes('\t') && !keywordHeaderFound) {
-                    const parts = line.split('\t');
+                if (currentSection === 'keyword' && !keywordHeaderFound) {
+                    // 优先使用制表符分割，如果没有制表符则使用智能空格分割
+                    let parts;
+                    if (line.includes('\t')) {
+                        parts = line.split('\t');
+                    } else {
+                        // 针对你提供的复杂数据格式，使用正则表达式精确提取
+                        parts = parseComplexKeywordLine(line);
+                    }
                     // 跳过表头行
                     if (line.toLowerCase().includes('keyword') && line.toLowerCase().includes('difficulty')) {
                         continue;
                     }
-                    // 解析数据行
-                    if (parts.length >= 13) {
-                        // 按照实际格式解析：
-                        // 0:Keyword, 1:Position, 2:Previous position, 3:Search Volume, 4:Keyword Difficulty, 5:CPC, 6:URL, 7:Traffic, 8:Traffic (%), 9:Traffic Cost, 10:Competition, 11:Number of Results, 12:intitle
-                        result.keywordInfo = {
+                    // 解析数据行 - 支持多种格式
+                    console.log('Parts array:', parts);
+
+                    if (parts.length >= 8) {
+                        // 灵活解析，支持不同的数据格式
+                        let keywordInfo = {
                             keyword: parts[0] || '',
                             position: parts[1] || '',
-                            searchVolume: parts[3] || '', // Search Volume
-                            difficulty: parts[4] || '', // Keyword Difficulty
-                            results: parts[11] || '', // Number of Results
-                            intitle: parts[12] || '', // intitle 结果数
-                            url: parts[6] || '',
-                            traffic: parts[7] || ''
+                            searchVolume: '',
+                            difficulty: '',
+                            results: '',
+                            intitle: '',
+                            url: '',
+                            traffic: ''
                         };
+
+                        // 根据数据长度自适应解析
+                        if (parts.length >= 14) {
+                            // 14字段格式：Keyword, Position, Previous position, Search Volume, KD, CPC, URL, Traffic, Traffic(%), Traffic Cost, Competition, Results, Trends, Intitle
+                            keywordInfo.searchVolume = parts[3] || '';
+                            keywordInfo.difficulty = parts[4] || '';
+                            keywordInfo.url = parts[6] || '';
+                            keywordInfo.traffic = parts[7] || '';
+                            keywordInfo.results = parts[11] || '';
+                            keywordInfo.intitle = parts[13] || ''; // Intitle是第14个字段（索引13）
+                        } else if (parts.length >= 13) {
+                            // 13字段格式：Keyword, Position, Previous position, Search Volume, KD, CPC, URL, Traffic, Traffic(%), Traffic Cost, Competition, Results, Intitle
+                            keywordInfo.searchVolume = parts[3] || '';
+                            keywordInfo.difficulty = parts[4] || '';
+                            keywordInfo.url = parts[6] || '';
+                            keywordInfo.traffic = parts[7] || '';
+                            keywordInfo.results = parts[11] || '';
+                            keywordInfo.intitle = parts[12] || '';
+                        } else if (parts.length >= 8) {
+                            // 简化格式：尝试从可用字段中提取信息
+                            // 寻找URL字段（通常包含http）
+                            for (let i = 2; i < parts.length; i++) {
+                                if (parts[i].includes('http') || parts[i].includes('www.')) {
+                                    keywordInfo.url = parts[i];
+                                    break;
+                                }
+                            }
+
+                            // 尝试识别数字字段作为搜索量、流量等
+                            if (parts[2] && /^\d+$/.test(parts[2])) {
+                                keywordInfo.searchVolume = parts[2];
+                            }
+                            if (parts[3] && /^\d+\.?\d*$/.test(parts[3])) {
+                                keywordInfo.difficulty = parts[3];
+                            }
+                            if (parts[5] && /^\d+$/.test(parts[5])) {
+                                keywordInfo.traffic = parts[5];
+                            }
+
+                            // 正确分配最后两个字段
+                            if (parts.length >= 8) {
+                                // 倒数第二个是搜索结果数（大数字）
+                                if (parts[parts.length - 2] && /^\d{6,}$/.test(parts[parts.length - 2])) {
+                                    keywordInfo.results = parts[parts.length - 2];
+                                }
+                                // 最后一个是intitle数据
+                                if (parts[parts.length - 1] && /^\d+$/.test(parts[parts.length - 1])) {
+                                    keywordInfo.intitle = parts[parts.length - 1];
+                                }
+                            }
+                        }
+
+                        result.keywordInfo = keywordInfo;
                         keywordHeaderFound = true;
                         console.log('Successfully parsed keyword info:', result.keywordInfo);
                     } else {
@@ -1409,6 +1470,81 @@
 
         // 全局变量存储SERP链接数据
         let globalSerpLinks = [];
+
+        // 复杂关键词数据解析函数
+        function parseComplexKeywordLine(line) {
+            console.log('Original line:', line);
+
+            // 使用正则表达式提取关键信息
+            const result = [];
+
+            // 1. 提取关键词（开头的文本，直到第一个数字）
+            const keywordMatch = line.match(/^([^0-9]+)/);
+            if (keywordMatch) {
+                result[0] = keywordMatch[1].trim();
+            }
+
+            // 2. 提取URL（查找https://开头的完整URL或域名片段）
+            const urlMatch = line.match(/(https?:\/\/[^\s,]+)|([a-zA-Z0-9.-]+\.io\/[^\s,]*)/);
+            if (urlMatch) {
+                result[6] = urlMatch[1] || ('https://' + urlMatch[2]); // URL通常在第7个位置（索引6）
+            } else {
+                // 尝试寻找域名片段
+                const domainMatch = line.match(/([a-zA-Z0-9.-]*imagetotext\.io[^\s,]*)/);
+                if (domainMatch) {
+                    result[6] = 'https://www.' + domainMatch[1];
+                }
+            }
+
+            // 3. 提取所有数字字段
+            const numbers = line.match(/\b\d+(?:\.\d+)?\b/g) || [];
+            console.log('Extracted numbers:', numbers);
+
+            if (numbers.length >= 8) {
+                result[1] = numbers[0]; // Position
+                result[2] = numbers[1]; // Previous position
+                result[3] = numbers[2]; // Search Volume
+                result[4] = numbers[3]; // KD Diff
+                result[5] = numbers[4]; // CPC
+                result[7] = numbers[5]; // Traffic
+                result[8] = numbers[6]; // Traffic (%)
+                result[9] = numbers[7]; // Traffic Cost
+                result[10] = numbers[8] || ''; // Competition
+
+                // 查找最大的数字作为搜索结果数
+                const bigNumbers = numbers.filter(n => parseInt(n) > 1000000);
+                if (bigNumbers.length > 0) {
+                    result[11] = bigNumbers[0]; // Number of Results
+                }
+
+                // Intitle应该是最后一个独立的数字，不在trends数据中
+                // 先找到trends部分（包含逗号的数字序列）
+                const trendsMatch = line.match(/[\d,]+,[\d,]+/g);
+                let intitleNumber = null;
+
+                if (trendsMatch) {
+                    // 在trends数据之后找独立的数字
+                    const afterTrends = line.split(trendsMatch[trendsMatch.length - 1])[1];
+                    if (afterTrends) {
+                        const intitleMatch = afterTrends.match(/\b(\d{1,4})\b/);
+                        if (intitleMatch) {
+                            intitleNumber = intitleMatch[1];
+                        }
+                    }
+                } else {
+                    // 如果没有trends数据，取最后一个小于10000的独立数字
+                    const smallNumbers = numbers.filter(n => parseInt(n) < 10000 && parseInt(n) > 10);
+                    intitleNumber = smallNumbers.pop();
+                }
+
+                if (intitleNumber) {
+                    result[12] = intitleNumber; // Intitle
+                }
+            }
+
+            console.log('Parsed parts:', result);
+            return result;
+        }
 
         // 数据持久化相关函数
         const STORAGE_KEY = 'seo_analyzer_data';
